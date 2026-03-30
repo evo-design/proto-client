@@ -26,10 +26,16 @@ class ProtoClient:
         tools_base_url: str = "https://proto-tools.evodesign.org",
         timeout: float = 600.0,
     ):
-        api_key = api_key or os.environ.get("PROTO_API_KEY")
+        resolved_key = (
+            api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
+        )
+        if resolved_key == "":
+            raise ValueError(
+                "api_key must not be empty. Pass a valid key or set PROTO_API_KEY."
+            )
         headers = {}
-        if api_key:
-            headers["X-API-Key"] = api_key
+        if resolved_key:
+            headers["X-API-Key"] = resolved_key
 
         tools_http = httpx.Client(
             base_url=tools_base_url,
@@ -44,6 +50,7 @@ class ProtoClient:
     def close(self) -> None:
         for c in self._clients:
             c.close()
+        self._clients.clear()
 
     def __enter__(self) -> ProtoClient:
         return self

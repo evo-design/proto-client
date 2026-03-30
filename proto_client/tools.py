@@ -111,6 +111,7 @@ class ToolsNamespace:
                 raise RuntimeError(f"Job {job_id} failed: {status.get('error')}")
             if status["status"] == "cancelled":
                 raise RuntimeError(f"Job {job_id} was cancelled")
-            if time.monotonic() > deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
-            time.sleep(poll_interval)
+            time.sleep(min(poll_interval, remaining))

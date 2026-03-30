@@ -4,14 +4,10 @@ from __future__ import annotations
 
 
 class RunsNamespace:
-    """Stub — will connect to the runs API when it ships.
+    """Stub — will connect to the runs API when it ships."""
 
-    Usage (future)::
-
-        client = ProtoClient(api_key="...")
-        run = client.runs.create(program_data)
-        status = client.runs.get(run_id)
-    """
-
-    def __init__(self) -> None:
-        pass
+    def __getattr__(self, name: str):
+        raise NotImplementedError(
+            "The runs API is not yet available. "
+            "See https://github.com/evo-design/proto-client for updates."
+        )
