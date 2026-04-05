@@ -238,6 +238,50 @@ async def test_run_polls_until_completed(monkeypatch):
     assert call_count["get"] == 3
 
 
+async def test_run_short_circuits_on_instant_failure():
+    """When create() returns a terminal status the poll loop is skipped."""
+    get_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/runs":
+            return httpx.Response(
+                200, json={"run_id": "r1", "status": "failed", "message": ""}
+            )
+        if request.method == "GET":
+            get_calls["n"] += 1
+            return httpx.Response(
+                200,
+                json={"id": "r1", "status": "failed", "error_message": "bad program"},
+            )
+        raise AssertionError(f"unexpected {request.method} {request.url.path}")
+
+    ns = make_ns(handler)
+    with pytest.raises(RuntimeError, match="bad program"):
+        await ns.run({"constructs": [{}], "optimization_stages": [{}]})
+    # Exactly one GET (the confirmation fetch), no poll loop.
+    assert get_calls["n"] == 1
+
+
+async def test_run_short_circuits_on_instant_completed():
+    """When create() returns completed, run() returns immediately."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/runs":
+            return httpx.Response(
+                200, json={"run_id": "r1", "status": "completed", "message": ""}
+            )
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": "r1", "status": "completed", "stage_results": []},
+            )
+        raise AssertionError(f"unexpected {request.method} {request.url.path}")
+
+    ns = make_ns(handler)
+    result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
+    assert result["status"] == "completed"
+
+
 async def test_run_raises_on_failed(monkeypatch):
     import proto_client._async.runs as runs_mod
 

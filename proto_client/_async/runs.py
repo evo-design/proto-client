@@ -202,7 +202,11 @@ class AsyncRunsNamespace:
         # Short-circuit if the server already resolved (e.g. instant validation
         # failure) — avoids a redundant GET.
         if created.get("status") in _TERMINAL_STATUSES:
-            return self._check_terminal(run_id, await self.get(run_id))
+            full = await self.get(run_id)
+            if full["status"] in _TERMINAL_STATUSES:
+                return self._check_terminal(run_id, full)
+            # create() said terminal but get() disagrees (eventual consistency)
+            # — fall through to poll loop.
         deadline = time.monotonic() + timeout
         while True:
             status = await self.get(run_id)

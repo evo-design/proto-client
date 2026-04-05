@@ -52,7 +52,7 @@ class ProtoClient:
 
         self.tools = ToolsNamespace(tools_http)
         self.runs = RunsNamespace(runs_http)
-        self._clients = [tools_http, runs_http]
+        self._clients: list[httpx.Client] = [tools_http, runs_http]
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""

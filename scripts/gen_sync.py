@@ -39,6 +39,8 @@ ADDITIONAL_REPLACEMENTS = {
     "AsyncClient": "Client",  # httpx.AsyncClient → httpx.Client
     "aclose": "close",
     # `import asyncio` → `import time`; `asyncio.sleep` → `time.sleep`.
+    # CAUTION: This replaces *all* `asyncio` tokens with `time`. Only add
+    # asyncio usage that has a `time.*` sync equivalent (currently: sleep).
     "asyncio": "time",
 }
 
