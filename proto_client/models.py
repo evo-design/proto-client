@@ -69,8 +69,6 @@ class JobStatusResponse(BaseModel):
     call sites that use ``output_model`` should cast or ``isinstance``-check.
     """
 
-    model_config = {"arbitrary_types_allowed": True}
-
     job_id: str
     tool_key: str
     status: JobStatus
