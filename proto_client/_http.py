@@ -24,9 +24,13 @@ import httpx
 from proto_client.errors import parse_retry_after
 
 RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
+# NetworkError covers ConnectError/ReadError/WriteError/CloseError; TimeoutException
+# covers ConnectTimeout/ReadTimeout/WriteTimeout/PoolTimeout. Protocol-level failures
+# (ProtocolError, DecodingError, InvalidURL) stay non-retriable — retrying them would
+# just burn the budget on deterministic errors.
 RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    httpx.ConnectError,
-    httpx.ReadTimeout,
+    httpx.NetworkError,
+    httpx.TimeoutException,
 )
 
 
@@ -62,11 +66,10 @@ def compute_backoff(
     config: RetryConfig,
     rng: random.Random | None = None,
 ) -> float:
-    """Exponential backoff with symmetric jitter.
+    """Exponential backoff with symmetric jitter. ``attempt`` is 0-indexed.
 
-    ``attempt`` is 0-indexed (0 = delay before the *first* retry). Exposed
-    for tests so we can seed the RNG and assert delays fall in the expected
-    window.
+    Accepts an explicit ``rng`` so tests can seed it and assert the sampled
+    delay falls inside the jitter window.
     """
     base = min(config.initial_delay * (config.factor**attempt), config.max_delay)
     if config.jitter == 0.0:

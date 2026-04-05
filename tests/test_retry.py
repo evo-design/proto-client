@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -15,29 +16,35 @@ from proto_client._http import (
 )
 
 
-def _request(method: str = "GET", path: str = "/x") -> httpx.Request:
-    return httpx.Request(method, f"https://proto-tools.evodesign.org{path}")
-
-
-def _sequence_handler(responses: list[httpx.Response | Exception]):
+def _sequence_handler(
+    responses: list[httpx.Response | Exception],
+) -> tuple[callable, SimpleNamespace]:
     """Return a MockTransport handler that yields the next response per call."""
-    i = {"n": 0}
+    counter = SimpleNamespace(n=0)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        idx = i["n"]
-        i["n"] += 1
-        item = responses[idx]
+        item = responses[counter.n]
+        counter.n += 1
         if isinstance(item, Exception):
             raise item
         return item
 
-    return handler, i
+    return handler, counter
 
 
 def _capturing_sleep() -> tuple[list[float], callable]:
     delays: list[float] = []
 
     def sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    return delays, sleep
+
+
+def _capturing_async_sleep() -> tuple[list[float], callable]:
+    delays: list[float] = []
+
+    async def sleep(seconds: float) -> None:
         delays.append(seconds)
 
     return delays, sleep
@@ -63,7 +70,7 @@ def test_retries_on_500_then_succeeds() -> None:
         resp = client.get("https://proto-tools.evodesign.org/x")
 
     assert resp.status_code == 200
-    assert counter["n"] == 2
+    assert counter.n == 2
     assert delays == [0.5]
 
 
@@ -84,7 +91,7 @@ def test_retries_on_retriable_status(status: int) -> None:
     with httpx.Client(transport=transport) as client:
         resp = client.get("https://proto-tools.evodesign.org/x")
     assert resp.status_code == 200
-    assert counter["n"] == 2
+    assert counter.n == 2
 
 
 @pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422])
@@ -105,7 +112,7 @@ def test_does_not_retry_on_non_retriable_status(status: int) -> None:
         resp = client.get("https://proto-tools.evodesign.org/x")
 
     assert resp.status_code == status
-    assert counter["n"] == 1
+    assert counter.n == 1
     assert delays == []
 
 
@@ -125,7 +132,7 @@ def test_retries_on_connect_error_then_succeeds() -> None:
     with httpx.Client(transport=transport) as client:
         resp = client.get("https://proto-tools.evodesign.org/x")
     assert resp.status_code == 200
-    assert counter["n"] == 2
+    assert counter.n == 2
 
 
 def test_does_not_retry_on_non_retriable_exception() -> None:
@@ -143,7 +150,7 @@ def test_does_not_retry_on_non_retriable_exception() -> None:
     with httpx.Client(transport=transport) as client:
         with pytest.raises(httpx.InvalidURL):
             client.get("https://proto-tools.evodesign.org/x")
-    assert counter["n"] == 1
+    assert counter.n == 1
     assert delays == []
 
 
@@ -162,7 +169,7 @@ def test_max_retries_cap_returns_final_error_response() -> None:
 
     # max_retries=2 → 1 initial + 2 retries = 3 calls, 2 sleeps.
     assert resp.status_code == 503
-    assert counter["n"] == 3
+    assert counter.n == 3
     assert len(delays) == 2
 
 
@@ -177,7 +184,7 @@ def test_max_retries_cap_reraises_final_exception() -> None:
     with httpx.Client(transport=transport) as client:
         with pytest.raises(httpx.ConnectError):
             client.get("https://proto-tools.evodesign.org/x")
-    assert counter["n"] == 3
+    assert counter.n == 3
     assert len(delays) == 2
 
 
@@ -297,14 +304,6 @@ def test_arbitrary_request_headers_pass_through() -> None:
 
 # --------------------------------------------------------------------------- async
 
-
-async def _drain_async_sleep(delays: list[float]):
-    async def sleep(seconds: float) -> None:
-        delays.append(seconds)
-
-    return sleep
-
-
 @pytest.mark.asyncio
 async def test_async_retries_on_500_then_succeeds() -> None:
     handler, counter = _sequence_handler(
@@ -313,8 +312,7 @@ async def test_async_retries_on_500_then_succeeds() -> None:
             httpx.Response(200, json={"ok": True}),
         ]
     )
-    delays: list[float] = []
-    sleep = await _drain_async_sleep(delays)
+    delays, sleep = _capturing_async_sleep()
     transport = AsyncRetryTransport(
         httpx.MockTransport(handler),
         RetryConfig(max_retries=2, initial_delay=0.5, jitter=0.0),
@@ -323,7 +321,7 @@ async def test_async_retries_on_500_then_succeeds() -> None:
     async with httpx.AsyncClient(transport=transport) as client:
         resp = await client.get("https://proto-tools.evodesign.org/x")
     assert resp.status_code == 200
-    assert counter["n"] == 2
+    assert counter.n == 2
     assert delays == [0.5]
 
 
@@ -335,8 +333,7 @@ async def test_async_retry_after_header_honored() -> None:
             httpx.Response(200, json={"ok": True}),
         ]
     )
-    delays: list[float] = []
-    sleep = await _drain_async_sleep(delays)
+    delays, sleep = _capturing_async_sleep()
     transport = AsyncRetryTransport(
         httpx.MockTransport(handler),
         RetryConfig(max_retries=2, initial_delay=0.5, jitter=0.0),
@@ -356,8 +353,7 @@ async def test_async_does_not_retry_on_409() -> None:
             httpx.Response(200, json={"ok": True}),
         ]
     )
-    delays: list[float] = []
-    sleep = await _drain_async_sleep(delays)
+    delays, sleep = _capturing_async_sleep()
     transport = AsyncRetryTransport(
         httpx.MockTransport(handler),
         RetryConfig(max_retries=3, initial_delay=0.01, jitter=0.0),
@@ -366,15 +362,14 @@ async def test_async_does_not_retry_on_409() -> None:
     async with httpx.AsyncClient(transport=transport) as client:
         resp = await client.get("https://proto-tools.evodesign.org/x")
     assert resp.status_code == 409
-    assert counter["n"] == 1
+    assert counter.n == 1
     assert delays == []
 
 
 @pytest.mark.asyncio
 async def test_async_max_retries_cap_on_exceptions() -> None:
     handler, counter = _sequence_handler([httpx.ConnectError("down")] * 10)
-    delays: list[float] = []
-    sleep = await _drain_async_sleep(delays)
+    delays, sleep = _capturing_async_sleep()
     transport = AsyncRetryTransport(
         httpx.MockTransport(handler),
         RetryConfig(max_retries=2, initial_delay=0.01, jitter=0.0),
@@ -383,5 +378,5 @@ async def test_async_max_retries_cap_on_exceptions() -> None:
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(httpx.ConnectError):
             await client.get("https://proto-tools.evodesign.org/x")
-    assert counter["n"] == 3
+    assert counter.n == 3
     assert len(delays) == 2

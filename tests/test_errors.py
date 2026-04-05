@@ -157,9 +157,8 @@ def test_error_str_without_request_id() -> None:
 
 
 def test_conflict_on_cancel_is_not_rate_limit() -> None:
-    # Explicit regression per the issue comment: 409 on
-    # POST /tools/{key}/jobs/{job_id}/cancel must be ProtoConflictError,
-    # which the retry transport does not retry.
+    # 409 cancel-on-completed-job must map to ProtoConflictError, not
+    # ProtoRateLimitError — retrying it would never succeed.
     err = from_response(_response(409, {"detail": "Job already completed"}))
     assert isinstance(err, ProtoConflictError)
     assert not isinstance(err, ProtoRateLimitError)
