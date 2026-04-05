@@ -102,3 +102,36 @@ def test_sync_run_polls_until_completed(monkeypatch):
         {"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01
     )
     assert final["status"] == "completed"
+
+
+def test_sync_run_short_circuits_on_instant_failure():
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(
+                200, json={"run_id": "r", "status": "failed", "message": ""}
+            )
+        return httpx.Response(
+            200, json={"id": "r", "status": "failed", "error_message": "boom"}
+        )
+
+    ns = make_ns(handler)
+    with pytest.raises(RuntimeError, match="boom"):
+        ns.run({"constructs": [{}], "optimization_stages": [{}]})
+
+
+def test_sync_run_short_circuits_on_instant_completed():
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(
+                200, json={"run_id": "r", "status": "completed", "message": ""}
+            )
+        return httpx.Response(
+            200, json={"id": "r", "status": "completed", "stage_results": []}
+        )
+
+    assert (
+        make_ns(handler).run({"constructs": [{}], "optimization_stages": [{}]})[
+            "status"
+        ]
+        == "completed"
+    )
