@@ -190,6 +190,16 @@ class AsyncRunsNamespace:
             webhook_metadata=webhook_metadata,
         )
         run_id = created["run_id"]
+        # Short-circuit if the server already resolved (e.g. instant validation
+        # failure) — avoids a redundant GET.
+        if created.get("status") in _TERMINAL_STATUSES:
+            full = await self.get(run_id)
+            state = full["status"]
+            if state == "completed":
+                return full
+            raise RuntimeError(
+                f"Run {run_id} ended with status={state!r}: {full.get('error_message')}"
+            )
         deadline = time.monotonic() + timeout
         while True:
             status = await self.get(run_id)

@@ -21,4 +21,5 @@ repos:
         entry: python scripts/gen_sync.py
         language: system
         pass_filenames: false
+        # Must match every file in SYNC_TARGETS in scripts/gen_sync.py.
         files: ^proto_client/_async/runs\.py$

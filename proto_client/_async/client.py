@@ -57,9 +57,15 @@ class AsyncProtoClient:
         self._clients: list[httpx.AsyncClient] = [tools_http, runs_http]
 
     async def aclose(self) -> None:
-        # Close in parallel — one slow shutdown shouldn't block the other.
-        await asyncio.gather(*(c.aclose() for c in self._clients))
+        # Close in parallel; return_exceptions ensures one failure doesn't
+        # leak the other client.
+        results = await asyncio.gather(
+            *(c.aclose() for c in self._clients), return_exceptions=True
+        )
         self._clients.clear()
+        for r in results:
+            if isinstance(r, BaseException):
+                raise r
 
     async def __aenter__(self) -> AsyncProtoClient:
         return self

@@ -56,9 +56,15 @@ class ProtoClient:
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""
+        errors: list[BaseException] = []
         for c in self._clients:
-            c.close()
+            try:
+                c.close()
+            except Exception as e:
+                errors.append(e)
         self._clients.clear()
+        if errors:
+            raise errors[0]
 
     def __enter__(self) -> "ProtoClient":
         return self
