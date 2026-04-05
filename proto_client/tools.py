@@ -9,6 +9,7 @@ import httpx
 from pydantic import BaseModel
 
 from proto_client.models import (
+    JobResponse,
     JobStatus,
     JobStatusResponse,
     ToolInfo,
@@ -59,7 +60,7 @@ class ToolsNamespace:
             json={"inputs": inputs, "config": config or {}},
         )
         resp.raise_for_status()
-        return str(resp.json()["job_id"])
+        return JobResponse.model_validate(resp.json()).job_id
 
     def submit_batch(
         self,
@@ -73,7 +74,7 @@ class ToolsNamespace:
             json={"inputs_list": inputs_list, "config": config or {}},
         )
         resp.raise_for_status()
-        return str(resp.json()["job_id"])
+        return JobResponse.model_validate(resp.json()).job_id
 
     def poll(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Get job status."""
@@ -117,7 +118,12 @@ class ToolsNamespace:
         *,
         output_model: type[T] | None = None,
     ) -> JobStatusResponse:
-        """Submit batch and poll until completion."""
+        """Submit batch and poll until completion.
+
+        Currently returns a single ``JobStatusResponse`` envelope. If the API
+        evolves to return per-input results, the return type will change to
+        ``list[JobStatusResponse]``.
+        """
         job_id = self.submit_batch(tool_key, inputs_list, config)
         return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
@@ -135,7 +141,7 @@ class ToolsNamespace:
             status = self.poll(tool_key, job_id)
             if status.status is JobStatus.completed:
                 if output_model is not None and isinstance(status.result, dict):
-                    status.result = output_model.model_validate(status.result)
+                    status = status.model_copy(update={"result": output_model.model_validate(status.result)})
                 return status
             if status.status is JobStatus.failed:
                 raise RuntimeError(f"Job {job_id} failed: {status.error}")

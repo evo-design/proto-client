@@ -1,6 +1,5 @@
 """Proto Bio Python SDK."""
 
-from proto_client import models
 from proto_client.client import ProtoClient
 from proto_client.errors import (
     ProtoAPIError,
@@ -11,8 +10,18 @@ from proto_client.errors import (
     ProtoServerError,
     ProtoValidationError,
 )
+from proto_client.models import (
+    JobResponse,
+    JobStatus,
+    JobStatusResponse,
+    ToolInfo,
+    ToolSchema,
+)
 
 __all__ = [
+    "JobResponse",
+    "JobStatus",
+    "JobStatusResponse",
     "ProtoAPIError",
     "ProtoAuthError",
     "ProtoClient",
@@ -21,5 +30,6 @@ __all__ = [
     "ProtoRateLimitError",
     "ProtoServerError",
     "ProtoValidationError",
-    "models",
+    "ToolInfo",
+    "ToolSchema",
 ]

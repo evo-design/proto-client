@@ -17,7 +17,15 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+__all__ = [
+    "JobResponse",
+    "JobStatus",
+    "JobStatusResponse",
+    "ToolInfo",
+    "ToolSchema",
+]
 
 
 class JobStatus(str, Enum):
@@ -33,6 +41,8 @@ class JobStatus(str, Enum):
 class ToolInfo(BaseModel):
     """Tool metadata from ``GET /api/v1/tools``."""
 
+    model_config = ConfigDict(frozen=True)
+
     key: str
     service: str
     method: str
@@ -46,6 +56,8 @@ class ToolSchema(BaseModel):
     ``GET /api/v1/tools/{key}/schema``.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     inputs: dict[str, Any]
     config: dict[str, Any]
     output: dict[str, Any]
@@ -53,6 +65,8 @@ class ToolSchema(BaseModel):
 
 class JobResponse(BaseModel):
     """202 submission ack from ``POST /api/v1/tools/{key}/run``."""
+
+    model_config = ConfigDict(frozen=True)
 
     job_id: str
     status: JobStatus = JobStatus.pending
@@ -68,6 +82,8 @@ class JobStatusResponse(BaseModel):
     ``MyModel`` at runtime. The declared field type stays ``dict | None`` —
     call sites that use ``output_model`` should cast or ``isinstance``-check.
     """
+
+    model_config = ConfigDict(frozen=True)
 
     job_id: str
     tool_key: str
