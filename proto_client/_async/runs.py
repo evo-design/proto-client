@@ -165,6 +165,15 @@ class AsyncRunsNamespace:
         resp.raise_for_status()
         return resp.json()
 
+    def _check_terminal(self, run_id: str, response: dict[str, Any]) -> dict[str, Any]:
+        """Return the response if completed, raise if failed/cancelled."""
+        state = response["status"]
+        if state == "completed":
+            return response
+        raise RuntimeError(
+            f"Run {run_id} ended with status={state!r}: {response.get('error_message')}"
+        )
+
     # ------------------------------------------------------------ convenience
 
     async def run(
@@ -193,24 +202,12 @@ class AsyncRunsNamespace:
         # Short-circuit if the server already resolved (e.g. instant validation
         # failure) — avoids a redundant GET.
         if created.get("status") in _TERMINAL_STATUSES:
-            full = await self.get(run_id)
-            state = full["status"]
-            if state == "completed":
-                return full
-            raise RuntimeError(
-                f"Run {run_id} ended with status={state!r}: {full.get('error_message')}"
-            )
+            return self._check_terminal(run_id, await self.get(run_id))
         deadline = time.monotonic() + timeout
         while True:
             status = await self.get(run_id)
-            state = status["status"]
-            if state == "completed":
-                return status
-            if state in _TERMINAL_STATUSES:
-                raise RuntimeError(
-                    f"Run {run_id} ended with status={state!r}: "
-                    f"{status.get('error_message')}"
-                )
+            if status["status"] in _TERMINAL_STATUSES:
+                return self._check_terminal(run_id, status)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")

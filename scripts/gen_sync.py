@@ -89,6 +89,11 @@ def main() -> None:
         out = SYNC_DIR / name
         content = out.read_text()
         for old, new in docstring_fixups.items():
+            if old not in content:
+                raise ValueError(
+                    f"Docstring fixup not found in {name} "
+                    f"(async source changed?): {old[:60]!r}"
+                )
             content = content.replace(old, new)
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
