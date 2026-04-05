@@ -133,7 +133,6 @@ class RetryTransport(httpx.BaseTransport):
                 return response
 
             delay = _delay_for_response(response, attempt, config, rng=self._rng)
-            # Drop the stream before retrying so httpx can reuse the conn.
             response.close()
             self._sleep(delay)
             attempt += 1
