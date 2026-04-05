@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -56,8 +57,8 @@ class AsyncProtoClient:
         self._clients: list[httpx.AsyncClient] = [tools_http, runs_http]
 
     async def aclose(self) -> None:
-        for c in self._clients:
-            await c.aclose()
+        # Close in parallel — one slow shutdown shouldn't block the other.
+        await asyncio.gather(*(c.aclose() for c in self._clients))
         self._clients.clear()
 
     async def __aenter__(self) -> AsyncProtoClient:

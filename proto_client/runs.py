@@ -28,6 +28,10 @@ class RunsNamespace:
         async with AsyncProtoClient(...) as client:
             run = await client.runs.create(program_data={...})
             status = await client.runs.get(run["run_id"])
+
+    Return types are currently ``dict[str, Any]``. Issue #2 (typed Pydantic
+    models) will replace them wholesale once its ``models.py`` lands — this
+    is a mechanical find-and-replace tracked in the integration PR.
     """
 
     def __init__(self, http: httpx.Client):
@@ -41,7 +45,7 @@ class RunsNamespace:
         execute: bool = True,
         webhook_url: str | None = None,
         webhook_metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:  
+    ) -> dict[str, Any]:
         """POST /runs — create an optimization run.
 
         With ``execute=True`` (default) the server begins running stages
@@ -59,17 +63,13 @@ class RunsNamespace:
         resp.raise_for_status()
         return resp.json()
 
-    def get(
-        self, run_id: str
-    ) -> dict[str, Any]:  
+    def get(self, run_id: str) -> dict[str, Any]:
         """GET /runs/{run_id} — fetch run status and stage results."""
         resp = self._http.get(f"/runs/{run_id}")
         resp.raise_for_status()
         return resp.json()
 
-    def cancel(
-        self, run_id: str
-    ) -> dict[str, Any]:  
+    def cancel(self, run_id: str) -> dict[str, Any]:
         """DELETE /runs/{run_id} — cancel a running job.
 
         Propagates the server's 400 if the run is already in a completed or
@@ -80,9 +80,7 @@ class RunsNamespace:
         resp.raise_for_status()
         return resp.json()
 
-    def run_stage(
-        self, run_id: str, stage_index: int
-    ) -> dict[str, Any]:  
+    def run_stage(self, run_id: str, stage_index: int) -> dict[str, Any]:
         """POST /runs/{run_id}/stages/{stage_index}/start — run a single stage.
 
         Used for incremental execution (after ``create(..., execute=False)``)
@@ -98,7 +96,7 @@ class RunsNamespace:
     def validate(
         self,
         program_data: dict[str, Any],
-    ) -> dict[str, Any]:  
+    ) -> dict[str, Any]:
         """POST /validate — validate a program without creating a run.
 
         Raises ``httpx.HTTPStatusError`` (422) when the program is invalid;
@@ -117,7 +115,7 @@ class RunsNamespace:
         offset: int | None = None,
         limit: int = 10000,
         timepoint: int | None = None,
-    ) -> list[dict[str, Any]]:  
+    ) -> list[dict[str, Any]]:
         """Get optimization timepoints for a run.
 
         When ``stage`` is ``None`` hits ``GET /runs/{run_id}/timepoints`` and
@@ -148,7 +146,7 @@ class RunsNamespace:
 
     def list_constraints(
         self,
-    ) -> list[dict[str, Any]]:  
+    ) -> list[dict[str, Any]]:
         """GET /constraints — list registered constraints with their params."""
         resp = self._http.get("/constraints")
         resp.raise_for_status()
@@ -156,7 +154,7 @@ class RunsNamespace:
 
     def list_generators(
         self,
-    ) -> list[dict[str, Any]]:  
+    ) -> list[dict[str, Any]]:
         """GET /generators — list registered generators with their params."""
         resp = self._http.get("/generators")
         resp.raise_for_status()
@@ -164,7 +162,7 @@ class RunsNamespace:
 
     def list_optimizers(
         self,
-    ) -> list[dict[str, Any]]:  
+    ) -> list[dict[str, Any]]:
         """GET /optimizers — list registered optimizers with their params."""
         resp = self._http.get("/optimizers")
         resp.raise_for_status()
@@ -179,7 +177,7 @@ class RunsNamespace:
         timeout: float = 3600.0,
         webhook_url: str | None = None,
         webhook_metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:  
+    ) -> dict[str, Any]:
         """Submit a run and poll until it reaches a terminal state.
 
         Returns the final ``RunResponse`` dict on success. Raises
@@ -198,11 +196,12 @@ class RunsNamespace:
         deadline = time.monotonic() + timeout
         while True:
             status = self.get(run_id)
-            if status["status"] in _TERMINAL_STATUSES:
-                if status["status"] == "completed":
-                    return status
+            state = status["status"]
+            if state == "completed":
+                return status
+            if state in _TERMINAL_STATUSES:
                 raise RuntimeError(
-                    f"Run {run_id} ended with status={status['status']!r}: "
+                    f"Run {run_id} ended with status={state!r}: "
                     f"{status.get('error_message')}"
                 )
             remaining = deadline - time.monotonic()
