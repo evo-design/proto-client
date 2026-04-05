@@ -36,6 +36,12 @@ class ProtoAPIError(Exception):
         tail = f" [request_id={self.request_id}]" if self.request_id else ""
         return f"[{self.status_code}] {self.message}{tail}"
 
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(status_code={self.status_code}, "
+            f"message={self.message!r}, request_id={self.request_id!r})"
+        )
+
 
 class ProtoAuthError(ProtoAPIError):
     """401/403 — invalid or missing API key."""
@@ -120,6 +126,7 @@ def parse_retry_after(value: str | None) -> float | None:
 
 def _extract_body(response: httpx.Response) -> Any:
     try:
+        response.read()  # ensure stream is consumed before parsing
         return response.json()
     except Exception:
         return None

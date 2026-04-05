@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from types import SimpleNamespace
 
 import httpx
@@ -15,10 +16,17 @@ from proto_client._http import (
     compute_backoff,
 )
 
+_REQ = httpx.Request("GET", "https://proto-tools.evodesign.org/x")
+
+
+def _resp(status: int, **kwargs: object) -> httpx.Response:
+    """Build an ``httpx.Response`` with a ``request`` attached."""
+    return httpx.Response(status, request=_REQ, **kwargs)
+
 
 def _sequence_handler(
     responses: list[httpx.Response | Exception],
-) -> tuple[callable, SimpleNamespace]:
+) -> tuple[Callable[[httpx.Request], httpx.Response], SimpleNamespace]:
     """Return a MockTransport handler that yields the next response per call."""
     counter = SimpleNamespace(n=0)
 
@@ -32,7 +40,7 @@ def _sequence_handler(
     return handler, counter
 
 
-def _capturing_sleep() -> tuple[list[float], callable]:
+def _capturing_sleep() -> tuple[list[float], Callable[[float], None]]:
     delays: list[float] = []
 
     def sleep(seconds: float) -> None:
@@ -41,7 +49,7 @@ def _capturing_sleep() -> tuple[list[float], callable]:
     return delays, sleep
 
 
-def _capturing_async_sleep() -> tuple[list[float], callable]:
+def _capturing_async_sleep() -> tuple[list[float], Callable[[float], None]]:
     delays: list[float] = []
 
     async def sleep(seconds: float) -> None:
@@ -50,14 +58,36 @@ def _capturing_async_sleep() -> tuple[list[float], callable]:
     return delays, sleep
 
 
+# ----------------------------------------------------------------------- config
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"max_retries": -1}, "max_retries must be >= 0"),
+        ({"initial_delay": -0.1}, "initial_delay must be >= 0"),
+        (
+            {"initial_delay": 5.0, "max_delay": 1.0},
+            "max_delay must be >= initial_delay",
+        ),
+        ({"factor": 0.5}, "factor must be >= 1.0"),
+        ({"jitter": -0.1}, "jitter must be in"),
+        ({"jitter": 1.5}, "jitter must be in"),
+    ],
+)
+def test_retry_config_rejects_invalid_values(kwargs: dict, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        RetryConfig(**kwargs)
+
+
 # --------------------------------------------------------------------------- sync
 
 
 def test_retries_on_500_then_succeeds() -> None:
     handler, counter = _sequence_handler(
         [
-            httpx.Response(500, json={"detail": "boom"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(500, json={"detail": "boom"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -78,8 +108,8 @@ def test_retries_on_500_then_succeeds() -> None:
 def test_retries_on_retriable_status(status: int) -> None:
     handler, counter = _sequence_handler(
         [
-            httpx.Response(status, json={"detail": "x"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(status, json={"detail": "x"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -98,8 +128,8 @@ def test_retries_on_retriable_status(status: int) -> None:
 def test_does_not_retry_on_non_retriable_status(status: int) -> None:
     handler, counter = _sequence_handler(
         [
-            httpx.Response(status, json={"detail": "nope"}),
-            httpx.Response(200, json={"ok": True}),  # should never be reached
+            _resp(status, json={"detail": "nope"}),
+            _resp(200, json={"ok": True}),  # should never be reached
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -120,7 +150,7 @@ def test_retries_on_connect_error_then_succeeds() -> None:
     handler, counter = _sequence_handler(
         [
             httpx.ConnectError("refused"),
-            httpx.Response(200, json={"ok": True}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -155,9 +185,7 @@ def test_does_not_retry_on_non_retriable_exception() -> None:
 
 
 def test_max_retries_cap_returns_final_error_response() -> None:
-    handler, counter = _sequence_handler(
-        [httpx.Response(503, json={"detail": "down"})] * 10
-    )
+    handler, counter = _sequence_handler([_resp(503, json={"detail": "down"})] * 10)
     delays, sleep = _capturing_sleep()
     transport = RetryTransport(
         httpx.MockTransport(handler),
@@ -191,8 +219,8 @@ def test_max_retries_cap_reraises_final_exception() -> None:
 def test_retry_after_header_overrides_backoff() -> None:
     handler, _ = _sequence_handler(
         [
-            httpx.Response(429, json={"detail": "rl"}, headers={"Retry-After": "7"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(429, json={"detail": "rl"}, headers={"Retry-After": "7"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -210,8 +238,8 @@ def test_retry_after_header_overrides_backoff() -> None:
 def test_429_without_retry_after_uses_computed_backoff() -> None:
     handler, _ = _sequence_handler(
         [
-            httpx.Response(429, json={"detail": "rl"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(429, json={"detail": "rl"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -228,10 +256,10 @@ def test_429_without_retry_after_uses_computed_backoff() -> None:
 def test_exponential_backoff_across_attempts() -> None:
     handler, _ = _sequence_handler(
         [
-            httpx.Response(500),
-            httpx.Response(500),
-            httpx.Response(500),
-            httpx.Response(200),
+            _resp(500),
+            _resp(500),
+            _resp(500),
+            _resp(200),
         ]
     )
     delays, sleep = _capturing_sleep()
@@ -252,7 +280,7 @@ def test_exponential_backoff_across_attempts() -> None:
 
 
 def test_max_delay_cap() -> None:
-    handler, _ = _sequence_handler([httpx.Response(500)] * 10)
+    handler, _ = _sequence_handler([_resp(500)] * 10)
     delays, sleep = _capturing_sleep()
     transport = RetryTransport(
         httpx.MockTransport(handler),
@@ -287,7 +315,7 @@ def test_arbitrary_request_headers_pass_through() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_headers.update(request.headers)
-        return httpx.Response(200, json={"ok": True})
+        return _resp(200, json={"ok": True})
 
     transport = RetryTransport(
         httpx.MockTransport(handler),
@@ -302,14 +330,39 @@ def test_arbitrary_request_headers_pass_through() -> None:
     assert seen_headers.get("x-api-key") == "sk_test"
 
 
+def test_mixed_exception_then_retriable_status_then_success() -> None:
+    # Exercises both retry branches (exception + status) in one flow.
+    handler, counter = _sequence_handler(
+        [
+            httpx.ConnectError("refused"),
+            _resp(503, json={"detail": "down"}),
+            _resp(200, json={"ok": True}),
+        ]
+    )
+    delays, sleep = _capturing_sleep()
+    transport = RetryTransport(
+        httpx.MockTransport(handler),
+        RetryConfig(max_retries=3, initial_delay=0.5, jitter=0.0),
+        sleep=sleep,
+    )
+    with httpx.Client(transport=transport) as client:
+        resp = client.get("https://proto-tools.evodesign.org/x")
+    assert resp.status_code == 200
+    assert counter.n == 3
+    assert len(delays) == 2
+    # First retry: attempt 0 → 0.5s; second: attempt 1 → 1.0s.
+    assert delays == [0.5, 1.0]
+
+
 # --------------------------------------------------------------------------- async
+
 
 @pytest.mark.asyncio
 async def test_async_retries_on_500_then_succeeds() -> None:
     handler, counter = _sequence_handler(
         [
-            httpx.Response(500, json={"detail": "boom"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(500, json={"detail": "boom"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_async_sleep()
@@ -329,8 +382,8 @@ async def test_async_retries_on_500_then_succeeds() -> None:
 async def test_async_retry_after_header_honored() -> None:
     handler, _ = _sequence_handler(
         [
-            httpx.Response(429, json={"detail": "rl"}, headers={"Retry-After": "4"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(429, json={"detail": "rl"}, headers={"Retry-After": "4"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_async_sleep()
@@ -349,8 +402,8 @@ async def test_async_retry_after_header_honored() -> None:
 async def test_async_does_not_retry_on_409() -> None:
     handler, counter = _sequence_handler(
         [
-            httpx.Response(409, json={"detail": "already done"}),
-            httpx.Response(200, json={"ok": True}),
+            _resp(409, json={"detail": "already done"}),
+            _resp(200, json={"ok": True}),
         ]
     )
     delays, sleep = _capturing_async_sleep()
