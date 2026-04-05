@@ -162,3 +162,20 @@ def test_conflict_on_cancel_is_not_rate_limit() -> None:
     err = from_response(_response(409, {"detail": "Job already completed"}))
     assert isinstance(err, ProtoConflictError)
     assert not isinstance(err, ProtoRateLimitError)
+
+
+def test_repr_shows_structured_fields() -> None:
+    err = from_response(_response(500, {"detail": "boom"}, {"X-Request-ID": "req_1"}))
+    r = repr(err)
+    assert "ProtoServerError" in r
+    assert "status_code=500" in r
+    assert "message='boom'" in r
+    assert "request_id='req_1'" in r
+
+
+def test_from_response_on_2xx_returns_base_error() -> None:
+    # from_response is not expected to be called on success responses,
+    # but if it is, it falls through to the base class.
+    err = from_response(_response(200, {"detail": "ok"}))
+    assert type(err) is ProtoAPIError
+    assert err.status_code == 200

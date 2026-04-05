@@ -116,8 +116,6 @@ def parse_retry_after(value: str | None) -> float | None:
         dt = parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
-    if dt is None:
-        return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     delta = (dt - datetime.now(timezone.utc)).total_seconds()

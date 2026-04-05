@@ -86,7 +86,8 @@ def _delay_for_response(
     rng: random.Random | None = None,
 ) -> float:
     """Compute the wait before the next attempt given a retriable response."""
-    if response.status_code == 429:
+    # RFC 9110: both 429 and 503 may carry Retry-After.
+    if response.status_code in (429, 503):
         server_hint = parse_retry_after(response.headers.get("Retry-After"))
         if server_hint is not None:
             return server_hint
@@ -133,6 +134,7 @@ class RetryTransport(httpx.BaseTransport):
                 return response
 
             delay = _delay_for_response(response, attempt, config, rng=self._rng)
+            response.read()
             response.close()
             self._sleep(delay)
             attempt += 1
@@ -176,6 +178,7 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
                 return response
 
             delay = _delay_for_response(response, attempt, config, rng=self._rng)
+            await response.aread()
             await response.aclose()
             await self._sleep(delay)
             attempt += 1

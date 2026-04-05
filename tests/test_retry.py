@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 
 import httpx
@@ -31,6 +31,10 @@ def _sequence_handler(
     counter = SimpleNamespace(n=0)
 
     def handler(request: httpx.Request) -> httpx.Response:
+        assert counter.n < len(responses), (
+            f"MockTransport exhausted: got call #{counter.n + 1} "
+            f"but only {len(responses)} responses configured"
+        )
         item = responses[counter.n]
         counter.n += 1
         if isinstance(item, Exception):
@@ -49,7 +53,7 @@ def _capturing_sleep() -> tuple[list[float], Callable[[float], None]]:
     return delays, sleep
 
 
-def _capturing_async_sleep() -> tuple[list[float], Callable[[float], None]]:
+def _capturing_async_sleep() -> tuple[list[float], Callable[[float], Awaitable[None]]]:
     delays: list[float] = []
 
     async def sleep(seconds: float) -> None:
@@ -352,6 +356,45 @@ def test_mixed_exception_then_retriable_status_then_success() -> None:
     assert len(delays) == 2
     # First retry: attempt 0 → 0.5s; second: attempt 1 → 1.0s.
     assert delays == [0.5, 1.0]
+
+
+def test_max_retries_zero_returns_error_immediately() -> None:
+    handler, counter = _sequence_handler(
+        [
+            _resp(503, json={"detail": "down"}),
+            _resp(200, json={"ok": True}),  # should never be reached
+        ]
+    )
+    delays, sleep = _capturing_sleep()
+    transport = RetryTransport(
+        httpx.MockTransport(handler),
+        RetryConfig(max_retries=0, initial_delay=0.5, jitter=0.0),
+        sleep=sleep,
+    )
+    with httpx.Client(transport=transport) as client:
+        resp = client.get("https://proto-tools.evodesign.org/x")
+    assert resp.status_code == 503
+    assert counter.n == 1
+    assert delays == []
+
+
+def test_503_with_retry_after_header_honored() -> None:
+    handler, _ = _sequence_handler(
+        [
+            _resp(503, json={"detail": "down"}, headers={"Retry-After": "5"}),
+            _resp(200, json={"ok": True}),
+        ]
+    )
+    delays, sleep = _capturing_sleep()
+    transport = RetryTransport(
+        httpx.MockTransport(handler),
+        RetryConfig(max_retries=2, initial_delay=0.5, jitter=0.0),
+        sleep=sleep,
+    )
+    with httpx.Client(transport=transport) as client:
+        resp = client.get("https://proto-tools.evodesign.org/x")
+    assert resp.status_code == 200
+    assert delays == [5.0]
 
 
 # --------------------------------------------------------------------------- async
