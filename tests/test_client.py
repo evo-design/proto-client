@@ -31,3 +31,30 @@ def test_client_no_key_no_header():
 def test_client_empty_key_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         ProtoClient(api_key="")
+
+
+
+def test_client_context_manager():
+    with ProtoClient(tools_base_url="http://localhost:9999") as c:
+        assert c is not None
+
+
+def test_runs_namespace_wired():
+    with ProtoClient(
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+    ) as c:
+        assert c.runs is not None
+        assert str(c.runs._http.base_url).rstrip("/") == "http://localhost:9998"
+
+
+def test_client_closes_both_http_clients():
+    c = ProtoClient(
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+    )
+    tools_http = c.tools._http
+    runs_http = c.runs._http
+    c.close()
+    assert tools_http.is_closed
+    assert runs_http.is_closed

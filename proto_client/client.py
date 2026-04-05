@@ -22,6 +22,7 @@ class ProtoClient:
         self,
         api_key: str | None = None,
         tools_base_url: str = "https://proto-tools.evodesign.org",
+        runs_base_url: str = "https://proto-language.evodesign.org",
         timeout: float = 600.0,
     ) -> None:
         """Initialize the client.
@@ -43,10 +44,15 @@ class ProtoClient:
             headers=headers,
             timeout=timeout,
         )
+        runs_http = httpx.Client(
+            base_url=runs_base_url,
+            headers=headers,
+            timeout=timeout,
+        )
 
         self.tools = ToolsNamespace(tools_http)
-        self.runs = RunsNamespace()
-        self._clients = [tools_http]
+        self.runs = RunsNamespace(runs_http)
+        self._clients = [tools_http, runs_http]
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""

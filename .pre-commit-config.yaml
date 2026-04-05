@@ -12,3 +12,13 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-merge-conflict
+  # Regenerate sync modules whenever the async sources change. The generated
+  # files are committed — unasync is a build-time tool, not a runtime dep.
+  - repo: local
+    hooks:
+      - id: unasync-gen-sync
+        name: unasync → regenerate sync modules
+        entry: python scripts/gen_sync.py
+        language: system
+        pass_filenames: false
+        files: ^proto_client/_async/runs\.py$

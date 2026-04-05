@@ -20,10 +20,12 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.10",
     "pre-commit>=3.0",
+    "unasync>=0.5",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py310"
