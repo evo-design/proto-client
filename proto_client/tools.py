@@ -147,7 +147,12 @@ class ToolsNamespace:
         while True:
             status = self.poll(tool_key, job_id)
             if status.status is JobStatus.completed:
-                if output_model is not None and isinstance(status.result, dict):
+                if output_model is not None:
+                    if not isinstance(status.result, dict):
+                        raise TypeError(
+                            f"Job {job_id} completed with no result, "
+                            f"but output_model={output_model.__name__} was requested"
+                        )
                     try:
                         parsed = output_model.model_validate(status.result)
                     except ValidationError as exc:

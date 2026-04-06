@@ -289,3 +289,14 @@ def test_run_output_model_validation_failure(mock_http):
     ns = ToolsNamespace(mock_http)
     with pytest.raises(TypeError, match="does not conform to Strict"):
         ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01, output_model=Strict)
+
+
+def test_run_output_model_with_none_result_raises(mock_http):
+    class Out(BaseModel):
+        answer: int
+
+    mock_http.post.return_value = _mock_response({"job_id": "j1", "status": "pending"}, 202)
+    mock_http.get.return_value = _mock_response(_job_payload("completed", result=None, completed=True))
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="completed with no result"):
+        ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01, output_model=Out)
