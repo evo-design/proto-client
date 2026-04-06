@@ -68,9 +68,7 @@ class ToolsNamespace:
         jobs. Reusing a key with different inputs raises
         :class:`~proto_client.errors.ProtoConflictError` (409).
         """
-        headers: dict[str, str] = {}
-        if idempotency_key is not None:
-            headers["Idempotency-Key"] = idempotency_key
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         resp = self._http.post(
             f"/api/v1/tools/{tool_key}/run",
             json={"inputs": inputs, "config": config or {}},
@@ -94,9 +92,7 @@ class ToolsNamespace:
         jobs. Reusing a key with different inputs raises
         :class:`~proto_client.errors.ProtoConflictError` (409).
         """
-        headers: dict[str, str] = {}
-        if idempotency_key is not None:
-            headers["Idempotency-Key"] = idempotency_key
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         resp = self._http.post(
             f"/api/v1/tools/{tool_key}/run-batch",
             json={"inputs_list": inputs_list, "config": config or {}},
