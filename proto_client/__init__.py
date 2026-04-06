@@ -1,5 +1,7 @@
 """Proto Bio Python SDK."""
 
+import logging
+
 from proto_client._async.client import AsyncProtoClient
 from proto_client._http import RetryConfig
 from proto_client._version import VERSION as __version__
@@ -73,3 +75,5 @@ __all__ = [
     "ToolSchema",
     "ValidationResponse",
 ]
+
+logging.getLogger("proto_client").addHandler(logging.NullHandler())
