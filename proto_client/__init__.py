@@ -1,6 +1,7 @@
 """Proto Bio Python SDK."""
 
 import logging
+import os
 
 from proto_client._async.client import AsyncProtoClient
 from proto_client._http import RetryConfig
@@ -76,4 +77,12 @@ __all__ = [
     "ValidationResponse",
 ]
 
-logging.getLogger("proto_client").addHandler(logging.NullHandler())
+_logger = logging.getLogger("proto_client")
+_logger.addHandler(logging.NullHandler())
+
+_log_level = os.environ.get("PROTO_LOG", "").lower()
+if _log_level in ("debug", "info"):
+    _logger.setLevel(getattr(logging, _log_level.upper()))
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    _logger.addHandler(_handler)
