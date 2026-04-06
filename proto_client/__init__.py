@@ -14,6 +14,9 @@ from proto_client.errors import (
     RunFailedError,
 )
 from proto_client.models import (
+    BatchItemFailure,
+    BatchItemSuccess,
+    BatchResult,
     JobResponse,
     JobStatus,
     JobStatusResponse,
@@ -23,6 +26,9 @@ from proto_client.models import (
 
 __all__ = [
     "AsyncProtoClient",
+    "BatchItemFailure",
+    "BatchItemSuccess",
+    "BatchResult",
     "JobResponse",
     "JobStatus",
     "JobStatusResponse",
