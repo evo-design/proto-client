@@ -202,7 +202,7 @@ def test_max_delay_cap() -> None:
 
 def test_jitter_applied_within_expected_window() -> None:
     cfg = RetryConfig(max_retries=0, initial_delay=1.0, factor=2.0, jitter=0.1)
-    rng = random.Random(12345)
+    rng = random.Random(12345)  # noqa: S311
     samples = [compute_backoff(0, cfg, rng=rng) for _ in range(200)]
     assert all(0.9 <= s <= 1.1 for s in samples)
     assert len(set(samples)) > 1

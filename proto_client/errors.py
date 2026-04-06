@@ -27,6 +27,7 @@ class ProtoAPIError(Exception):
         status_code: int,
         request_id: str | None = None,
     ) -> None:
+        """Initialize with status code, message, and optional request ID."""
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -73,6 +74,7 @@ class ProtoValidationError(ProtoAPIError):
         request_id: str | None = None,
         errors: list[dict[str, Any]] | None = None,
     ) -> None:
+        """Initialize with optional structured validation errors."""
         super().__init__(message, status_code=status_code, request_id=request_id)
         self.errors: list[dict[str, Any]] = errors or []
 
@@ -88,6 +90,7 @@ class ProtoRateLimitError(ProtoAPIError):
         request_id: str | None = None,
         retry_after: float | None = None,
     ) -> None:
+        """Initialize with optional retry-after delay from server."""
         super().__init__(message, status_code=status_code, request_id=request_id)
         self.retry_after = retry_after
 
@@ -139,8 +142,10 @@ def _extract_message(body: Any, status_code: int) -> str:
             return detail
         if isinstance(detail, list) and detail:
             first = detail[0]
-            if isinstance(first, dict) and isinstance(first.get("msg"), str):
-                return first["msg"]
+            if isinstance(first, dict):
+                msg = first.get("msg")
+                if isinstance(msg, str):
+                    return msg
             return "Validation error"
         message = body.get("message")
         if isinstance(message, str) and message:
