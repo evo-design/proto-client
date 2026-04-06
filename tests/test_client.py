@@ -87,3 +87,35 @@ def test_explicit_retry_config():
         assert isinstance(transport, RetryTransport)
         assert transport._config.max_retries == 5
         assert transport._config.initial_delay == 1.0
+
+
+def test_version_exported():
+    from proto_client import __version__
+
+    assert isinstance(__version__, str)
+    assert __version__
+
+
+def test_user_agent_header():
+    with ProtoClient(tools_base_url="http://localhost:9999") as c:
+        ua = c.tools._http.headers.get("user-agent", "")
+        assert "proto-client-python/" in ua
+        assert "python/" in ua
+
+
+def test_base_url_from_env_tools():
+    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://custom-tools:8000"}):
+        with ProtoClient() as c:
+            assert str(c.tools._http.base_url).rstrip("/") == "http://custom-tools:8000"
+
+
+def test_base_url_from_env_runs():
+    with patch.dict(os.environ, {"PROTO_RUNS_BASE_URL": "http://custom-runs:8000"}):
+        with ProtoClient() as c:
+            assert str(c.runs._http.base_url).rstrip("/") == "http://custom-runs:8000"
+
+
+def test_explicit_base_url_overrides_env():
+    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://env:8000"}):
+        with ProtoClient(tools_base_url="http://explicit:9000") as c:
+            assert str(c.tools._http.base_url).rstrip("/") == "http://explicit:9000"
