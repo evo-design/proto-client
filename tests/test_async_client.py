@@ -78,3 +78,28 @@ async def test_async_explicit_retry_config():
         assert isinstance(transport, AsyncRetryTransport)
         assert transport._config.max_retries == 5
         assert transport._config.initial_delay == 1.0
+
+
+async def test_async_user_agent_header():
+    async with AsyncProtoClient(tools_base_url="http://localhost:9999") as c:
+        ua = c.tools._http.headers.get("user-agent", "")
+        assert "proto-client-python/" in ua
+        assert "python/" in ua
+
+
+async def test_async_base_url_from_env_tools():
+    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://custom-tools:8000"}):
+        async with AsyncProtoClient() as c:
+            assert str(c.tools._http.base_url).rstrip("/") == "http://custom-tools:8000"
+
+
+async def test_async_base_url_from_env_runs():
+    with patch.dict(os.environ, {"PROTO_RUNS_BASE_URL": "http://custom-runs:8000"}):
+        async with AsyncProtoClient() as c:
+            assert str(c.runs._http.base_url).rstrip("/") == "http://custom-runs:8000"
+
+
+async def test_async_explicit_base_url_overrides_env():
+    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://env:8000"}):
+        async with AsyncProtoClient(tools_base_url="http://explicit:9000") as c:
+            assert str(c.tools._http.base_url).rstrip("/") == "http://explicit:9000"
