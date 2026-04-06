@@ -47,8 +47,16 @@ class ProtoClient:
         if resolved_key == "":
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
 
-        resolved_tools_url = tools_base_url or os.environ.get("PROTO_TOOLS_BASE_URL") or "https://proto-tools.evodesign.org"
-        resolved_runs_url = runs_base_url or os.environ.get("PROTO_RUNS_BASE_URL") or "https://proto-language.evodesign.org"
+        resolved_tools_url = (
+            tools_base_url
+            if tools_base_url is not None
+            else (os.environ.get("PROTO_TOOLS_BASE_URL") or "https://proto-tools.evodesign.org")
+        )
+        resolved_runs_url = (
+            runs_base_url
+            if runs_base_url is not None
+            else (os.environ.get("PROTO_RUNS_BASE_URL") or "https://proto-language.evodesign.org")
+        )
 
         headers: dict[str, str] = {
             "User-Agent": f"proto-client-python/{VERSION} python/{platform.python_version()}",
