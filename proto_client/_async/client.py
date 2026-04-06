@@ -8,6 +8,7 @@ import httpx
 
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
+from proto_client._http import AsyncRetryTransport, RetryConfig
 
 
 class AsyncProtoClient:
@@ -26,6 +27,8 @@ class AsyncProtoClient:
         tools_base_url: str = "https://proto-tools.evodesign.org",
         runs_base_url: str = "https://proto-language.evodesign.org",
         timeout: float = 600.0,
+        max_retries: int = 2,
+        retry_config: RetryConfig | None = None,
     ):
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
@@ -34,16 +37,19 @@ class AsyncProtoClient:
         if resolved_key:
             headers["X-API-Key"] = resolved_key
 
-        
+        cfg = retry_config or RetryConfig(max_retries=max_retries)
+
         tools_http = httpx.AsyncClient(
             base_url=tools_base_url,
             headers=headers,
             timeout=timeout,
+            transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
         runs_http = httpx.AsyncClient(
             base_url=runs_base_url,
             headers=headers,
             timeout=timeout,
+            transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
 
         self.tools = AsyncToolsNamespace(tools_http)

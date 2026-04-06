@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from proto_client import ProtoClient
+from proto_client import ProtoClient, RetryConfig
+from proto_client._http import RetryTransport
 
 
 def test_client_reads_env_var():
@@ -61,3 +62,28 @@ def test_close_idempotent():
     assert runs_http.is_closed
     assert c._clients == []
     c.close()  # second close on empty list should not raise
+
+
+def test_default_client_has_retry_transport():
+    with ProtoClient(tools_base_url="http://localhost:9999") as c:
+        tools_transport = c.tools._http._transport
+        runs_transport = c.runs._http._transport
+        assert isinstance(tools_transport, RetryTransport)
+        assert isinstance(runs_transport, RetryTransport)
+        assert tools_transport._config.max_retries == 2
+
+
+def test_max_retries_zero():
+    with ProtoClient(tools_base_url="http://localhost:9999", max_retries=0) as c:
+        transport = c.tools._http._transport
+        assert isinstance(transport, RetryTransport)
+        assert transport._config.max_retries == 0
+
+
+def test_explicit_retry_config():
+    cfg = RetryConfig(max_retries=5, initial_delay=1.0)
+    with ProtoClient(tools_base_url="http://localhost:9999", retry_config=cfg) as c:
+        transport = c.tools._http._transport
+        assert isinstance(transport, RetryTransport)
+        assert transport._config.max_retries == 5
+        assert transport._config.initial_delay == 1.0

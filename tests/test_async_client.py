@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from proto_client import AsyncProtoClient
+from proto_client import AsyncProtoClient, RetryConfig
+from proto_client._http import AsyncRetryTransport
 
 
 async def test_async_client_lifecycle_and_wiring():
@@ -43,8 +44,37 @@ async def test_async_client_empty_key_raises():
         AsyncProtoClient(api_key="")
 
 
-async def test_async_tools_namespace_skeleton_raises():
-    """AsyncToolsNamespace is a stub pending issue #2 integration."""
+async def test_async_tools_namespace_is_functional():
+    """AsyncToolsNamespace methods do not raise NotImplementedError."""
+    import asyncio
+
     async with AsyncProtoClient(tools_base_url="http://localhost:9999") as c:
-        with pytest.raises(NotImplementedError, match="pending async implementation"):
-            await c.tools.list()
+        assert asyncio.iscoroutinefunction(c.tools.list)
+        assert asyncio.iscoroutinefunction(c.tools.get_schema)
+        assert asyncio.iscoroutinefunction(c.tools.submit)
+        assert asyncio.iscoroutinefunction(c.tools.run)
+
+
+async def test_async_default_client_has_retry_transport():
+    async with AsyncProtoClient(tools_base_url="http://localhost:9999") as c:
+        tools_transport = c.tools._http._transport
+        runs_transport = c.runs._http._transport
+        assert isinstance(tools_transport, AsyncRetryTransport)
+        assert isinstance(runs_transport, AsyncRetryTransport)
+        assert tools_transport._config.max_retries == 2
+
+
+async def test_async_max_retries_zero():
+    async with AsyncProtoClient(tools_base_url="http://localhost:9999", max_retries=0) as c:
+        transport = c.tools._http._transport
+        assert isinstance(transport, AsyncRetryTransport)
+        assert transport._config.max_retries == 0
+
+
+async def test_async_explicit_retry_config():
+    cfg = RetryConfig(max_retries=5, initial_delay=1.0)
+    async with AsyncProtoClient(tools_base_url="http://localhost:9999", retry_config=cfg) as c:
+        transport = c.tools._http._transport
+        assert isinstance(transport, AsyncRetryTransport)
+        assert transport._config.max_retries == 5
+        assert transport._config.initial_delay == 1.0
