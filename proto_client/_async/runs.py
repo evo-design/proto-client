@@ -175,6 +175,8 @@ class AsyncRunsNamespace:
             return response
         if state == "cancelled":
             raise RunCancelledError(run_id)
+        if state != "failed":
+            raise AssertionError(f"Unexpected terminal status: {state!r}")
         raise RunFailedError(run_id, response.get("error_message"))
 
     # ------------------------------------------------------------ convenience
