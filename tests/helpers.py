@@ -41,6 +41,29 @@ def job_payload(
     }
 
 
+def run_response_json(
+    run_id: str,
+    status: str,
+    *,
+    current_stage: int = 0,
+    total_stages: int = 1,
+    error_message: str | None = None,
+) -> dict[str, Any]:
+    """Build a minimal ``RunResponse``-shaped dict for mock transports."""
+    return {
+        "id": run_id,
+        "status": status,
+        "created_at": "2026-04-05T12:00:00",
+        "updated_at": "2026-04-05T12:00:01",
+        "started_at": None,
+        "completed_at": None,
+        "current_stage": current_stage,
+        "total_stages": total_stages,
+        "stage_results": [],
+        "error_message": error_message,
+    }
+
+
 def make_async_ns(handler) -> AsyncRunsNamespace:
     """Create an AsyncRunsNamespace backed by a mock transport."""
     transport = httpx.MockTransport(handler)
