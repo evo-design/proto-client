@@ -66,62 +66,34 @@ async def test_create_run_execute_false():
     assert "webhook_metadata" not in captured["body"]
 
 
-async def test_get_run():
+async def test_get_cancel_run_stage():
+    """GET, DELETE (cancel), and POST (run_stage) hit the right paths."""
+
     def handler(request):
-        assert request.method == "GET"
-        assert request.url.path == "/runs/abc"
-        return httpx.Response(200, json={"id": "abc", "status": "running"})
+        if request.method == "GET" and request.url.path == "/runs/abc":
+            return httpx.Response(200, json={"id": "abc", "status": "running"})
+        if request.method == "DELETE" and request.url.path == "/runs/xyz":
+            return httpx.Response(200, json={"message": "cancelled", "status": "cancelled"})
+        if request.method == "POST" and request.url.path == "/runs/abc/stages/2/start":
+            return httpx.Response(200, json={"stage_index": 2, "run_id": "abc"})
+        raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_ns(handler)
-    resp = await ns.get("abc")
-    assert resp["status"] == "running"
-
-
-async def test_cancel_run():
-    def handler(request):
-        assert request.method == "DELETE"
-        assert request.url.path == "/runs/xyz"
-        return httpx.Response(200, json={"message": "cancelled", "status": "cancelled"})
-
-    ns = make_ns(handler)
-    resp = await ns.cancel("xyz")
-    assert resp["status"] == "cancelled"
+    assert (await ns.get("abc"))["status"] == "running"
+    assert (await ns.cancel("xyz"))["status"] == "cancelled"
+    assert (await ns.run_stage("abc", 2))["stage_index"] == 2
 
 
 async def test_cancel_completed_run_propagates_400():
     """Server 400 on cancelling a completed/failed run must reach the caller."""
 
     def handler(request):
-        return httpx.Response(
-            400,
-            json={"detail": "Cannot cancel run with status: completed"},
-        )
+        return httpx.Response(400, json={"detail": "Cannot cancel run with status: completed"})
 
     ns = make_ns(handler)
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         await ns.cancel("done")
     assert exc_info.value.response.status_code == 400
-
-
-async def test_run_stage():
-    def handler(request):
-        assert request.method == "POST"
-        assert request.url.path == "/runs/abc/stages/2/start"
-        return httpx.Response(
-            200,
-            json={
-                "message": "Stage 2 started successfully",
-                "run_id": "abc",
-                "stage_index": 2,
-                "total_stages": 3,
-                "task_id": "t-1",
-                "is_rerun": False,
-            },
-        )
-
-    ns = make_ns(handler)
-    resp = await ns.run_stage("abc", 2)
-    assert resp["stage_index"] == 2
 
 
 async def test_validate_ok():
@@ -230,44 +202,33 @@ async def test_run_polls_until_completed(monkeypatch):
     assert call_count["get"] == 3
 
 
-async def test_run_short_circuits_on_instant_failure():
+@pytest.mark.parametrize(
+    "terminal_status,expect_error",
+    [("completed", False), ("failed", True)],
+)
+async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_error):
     """When create() returns a terminal status the poll loop is skipped."""
     get_calls = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(200, json={"run_id": "r1", "status": "failed", "message": ""})
+            return httpx.Response(200, json={"run_id": "r1", "status": terminal_status, "message": ""})
         if request.method == "GET":
             get_calls["n"] += 1
             return httpx.Response(
                 200,
-                json={"id": "r1", "status": "failed", "error_message": "bad program"},
+                json={"id": "r1", "status": terminal_status, "error_message": "bad program", "stage_results": []},
             )
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_ns(handler)
-    with pytest.raises(RuntimeError, match="bad program"):
-        await ns.run({"constructs": [{}], "optimization_stages": [{}]})
-    # Exactly one GET (the confirmation fetch), no poll loop.
+    if expect_error:
+        with pytest.raises(RuntimeError, match="bad program"):
+            await ns.run({"constructs": [{}], "optimization_stages": [{}]})
+    else:
+        result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
+        assert result["status"] == "completed"
     assert get_calls["n"] == 1
-
-
-async def test_run_short_circuits_on_instant_completed():
-    """When create() returns completed, run() returns immediately."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(200, json={"run_id": "r1", "status": "completed", "message": ""})
-        if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={"id": "r1", "status": "completed", "stage_results": []},
-            )
-        raise AssertionError(f"unexpected {request.method} {request.url.path}")
-
-    ns = make_ns(handler)
-    result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
-    assert result["status"] == "completed"
 
 
 async def test_run_times_out(monkeypatch):
