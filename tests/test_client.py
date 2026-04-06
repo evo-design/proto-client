@@ -1,7 +1,5 @@
 """Tests for ProtoClient initialization and configuration."""
 
-from __future__ import annotations
-
 import os
 from unittest.mock import patch
 

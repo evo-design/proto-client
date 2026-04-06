@@ -1,7 +1,5 @@
 """Main client entrypoint."""
 
-from __future__ import annotations
-
 import os
 from typing import Any
 
@@ -25,15 +23,18 @@ class ProtoClient:
         api_key: str | None = None,
         tools_base_url: str = "https://proto-tools.evodesign.org",
         timeout: float = 600.0,
-    ):
-        resolved_key = (
-            api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
-        )
+    ) -> None:
+        """Initialize the client.
+
+        Args:
+            api_key: API key for authentication. Falls back to PROTO_API_KEY env var.
+            tools_base_url: Base URL for the the tools API.
+            timeout: Default request timeout in seconds.
+        """
+        resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
-            raise ValueError(
-                "api_key must not be empty. Pass a valid key or set PROTO_API_KEY."
-            )
-        headers = {}
+            raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
+        headers: dict[str, str] = {}
         if resolved_key:
             headers["X-API-Key"] = resolved_key
 
@@ -48,11 +49,12 @@ class ProtoClient:
         self._clients = [tools_http]
 
     def close(self) -> None:
+        """Close all underlying HTTP clients."""
         for c in self._clients:
             c.close()
         self._clients.clear()
 
-    def __enter__(self) -> ProtoClient:
+    def __enter__(self) -> "ProtoClient":
         return self
 
     def __exit__(self, *args: Any) -> None:

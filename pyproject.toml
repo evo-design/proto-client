@@ -16,8 +16,93 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.8",
+    "mypy>=1.10",
     "pre-commit>=3.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+exclude = [
+    ".venvs",
+    "*/.venvs",
+    "__pycache__",
+    ".git",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    # ── Tier 1: Essential ─────────────────────────────────────────────
+    "F",        # Pyflakes — unused imports/vars, undefined names
+    "E",        # pycodestyle errors — comparison bugs, syntax
+    "W",        # pycodestyle warnings — whitespace
+    "I",        # isort — import ordering (fully auto-fixable)
+    "UP",       # pyupgrade — modernize syntax (almost fully auto-fixable)
+    "B",        # flake8-bugbear — mutable defaults, exception chaining
+    "S",        # flake8-bandit — security (hardcoded creds, SQL injection, eval)
+    "T20",      # flake8-print — debug print() left behind
+    "ERA",      # eradicate — commented-out code
+    "D",        # pydocstyle — Google convention docstring quality
+    # ── Tier 2: Strongly recommended ──────────────────────────────────
+    "SIM",      # flake8-simplify — collapse nested ifs, use builtins
+    "C4",       # flake8-comprehensions — unnecessary list()/dict() wrappers
+    "RET",      # flake8-return — clean up return patterns
+    "PIE",      # flake8-pie — unnecessary pass, duplicate class fields
+    "RUF",      # Ruff-specific — mutable defaults, missing f-prefix
+    "PERF",     # Perflint — performance anti-patterns
+    "FURB",     # refurb — modern Python idioms (fully auto-fixable)
+    "PLE",      # Pylint errors — real bugs
+    "PLW",      # Pylint warnings — subprocess without check
+    "ARG",      # flake8-unused-arguments — unused function arguments
+    "TID",      # flake8-tidy-imports — ban relative imports
+    "ASYNC",    # flake8-async — async anti-patterns
+    "A",        # flake8-builtins — catch shadowing of Python builtins
+]
+ignore = [
+    "E501",     # line too long — let `ruff format` handle this
+    "PLW1641",  # eq-without-hash — Pydantic models handle __hash__; non-Pydantic uses are intentional
+    "D105",     # missing magic method docstring — __repr__, __eq__ are self-documenting
+    "RUF022",   # unsorted-__all__ — keep logical grouping with section comments
+    "A002",     # argument-shadowing-builtin — `format` param is intentional for export functions
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",     # assert is the whole point of tests
+    "S105",     # hardcoded password strings ok in test fixtures
+    "S106",     # hardcoded passwords ok in test fixtures
+    "S110",     # try-except-pass ok in test cleanup
+    "S112",     # try-except-continue ok in test loops
+    "S603",     # subprocess calls in test fixtures
+    "S607",     # partial executable paths in test fixtures
+    "ERA001",   # commented-out test code sometimes intentional
+    "B017",     # assert-raises-exception — test patterns
+    "SIM117",   # multiple-with-statements — readability preference in tests
+    "D100", "D101", "D102", "D103", "D104", "D106", "D107",  # docstring presence rules relaxed in tests
+    "ARG",      # pytest fixtures appear as unused arguments
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["proto_client"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code", "deprecated"]
+explicit_package_bases = true

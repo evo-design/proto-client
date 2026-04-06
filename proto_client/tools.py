@@ -1,11 +1,12 @@
 """Tools namespace — wraps the tools API endpoints."""
 
-from __future__ import annotations
-
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
+
+# Alias to avoid shadowing by the `list` method defined below.
+_list = list
 
 
 class ToolsNamespace:
@@ -18,14 +19,15 @@ class ToolsNamespace:
         tools = client.tools.list()
     """
 
-    def __init__(self, http: httpx.Client):
+    def __init__(self, http: httpx.Client) -> None:
+        """Initialize with an httpx Client."""
         self._http = http
 
-    def list(self) -> list[dict[str, str]]:
+    def list(self) -> _list[dict[str, str]]:
         """List available tools."""
         resp = self._http.get("/api/v1/tools")
         resp.raise_for_status()
-        return resp.json()
+        return cast(_list[dict[str, str]], resp.json())
 
     def submit(
         self,
@@ -39,12 +41,12 @@ class ToolsNamespace:
             json={"inputs": inputs, "config": config or {}},
         )
         resp.raise_for_status()
-        return resp.json()["job_id"]
+        return str(resp.json()["job_id"])
 
     def submit_batch(
         self,
         tool_key: str,
-        inputs_list: list[dict[str, Any]],
+        inputs_list: _list[dict[str, Any]],
         config: dict[str, Any] | None = None,
     ) -> str:
         """Submit a batch job. Returns job_id."""
@@ -53,19 +55,19 @@ class ToolsNamespace:
             json={"inputs_list": inputs_list, "config": config or {}},
         )
         resp.raise_for_status()
-        return resp.json()["job_id"]
+        return str(resp.json()["job_id"])
 
     def poll(self, tool_key: str, job_id: str) -> dict[str, Any]:
         """Get job status."""
         resp = self._http.get(f"/api/v1/tools/{tool_key}/jobs/{job_id}")
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def cancel(self, tool_key: str, job_id: str) -> dict[str, Any]:
         """Cancel a job."""
         resp = self._http.post(f"/api/v1/tools/{tool_key}/jobs/{job_id}/cancel")
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def run(
         self,
@@ -85,7 +87,7 @@ class ToolsNamespace:
     def run_batch(
         self,
         tool_key: str,
-        inputs_list: list[dict[str, Any]],
+        inputs_list: _list[dict[str, Any]],
         config: dict[str, Any] | None = None,
         poll_interval: float = 1.0,
         timeout: float = 600.0,
@@ -106,7 +108,7 @@ class ToolsNamespace:
         while True:
             status = self.poll(tool_key, job_id)
             if status["status"] == "completed":
-                return status.get("result", {})
+                return cast(dict[str, Any], status.get("result", {}))
             if status["status"] == "failed":
                 raise RuntimeError(f"Job {job_id} failed: {status.get('error')}")
             if status["status"] == "cancelled":
