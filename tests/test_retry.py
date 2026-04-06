@@ -1,7 +1,5 @@
 """Retry transport behavior (sync + async)."""
 
-from __future__ import annotations
-
 import random
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace

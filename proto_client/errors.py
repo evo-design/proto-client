@@ -8,8 +8,6 @@ subclass — call sites replace ``response.raise_for_status()`` with::
         raise errors.from_response(response)
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
