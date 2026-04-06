@@ -89,9 +89,7 @@ async def test_cancel_run():
 
 
 async def test_cancel_completed_run_propagates_400():
-    """The server returns 400 when cancelling a completed/failed run. That
-    signal must reach the caller — silently swallowing it would hide that
-    their cancel was a no-op."""
+    """Server 400 on cancelling a completed/failed run must reach the caller."""
 
     def handler(request):
         return httpx.Response(

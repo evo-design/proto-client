@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import unasync
+import unasync  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parent.parent
 ASYNC_DIR = ROOT / "proto_client" / "_async"
@@ -46,6 +46,7 @@ ADDITIONAL_REPLACEMENTS = {
 
 
 def main() -> None:
+    """Generate sync modules from their async sources via unasync."""
     rule = unasync.Rule(
         fromdir=f"{ASYNC_DIR.as_posix()}/",
         todir=f"{SYNC_DIR.as_posix()}/",
@@ -79,12 +80,8 @@ def main() -> None:
             '"""'
         ),
         # Class-level: replace the async usage example
-        "async with AsyncProtoClient(...) as client:": (
-            "with ProtoClient(...) as client:"
-        ),
-        "run = await client.runs.create(program_data={...})": (
-            "run = client.runs.create(program_data={...})"
-        ),
+        "async with AsyncProtoClient(...) as client:": ("with ProtoClient(...) as client:"),
+        "run = await client.runs.create(program_data={...})": ("run = client.runs.create(program_data={...})"),
         "status = await client.runs.get(run[": ("status = client.runs.get(run["),
     }
     for name in SYNC_TARGETS:
@@ -92,15 +89,12 @@ def main() -> None:
         content = out.read_text()
         for old, new in docstring_fixups.items():
             if old not in content:
-                raise ValueError(
-                    f"Docstring fixup not found in {name} "
-                    f"(async source changed?): {old[:60]!r}"
-                )
+                raise ValueError(f"Docstring fixup not found in {name} (async source changed?): {old[:60]!r}")
             content = content.replace(old, new)
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
         out.write_text(content)
-    print(f"Regenerated: {', '.join(SYNC_TARGETS)}")
+    print(f"Regenerated: {', '.join(SYNC_TARGETS)}")  # noqa: T201
 
 
 if __name__ == "__main__":

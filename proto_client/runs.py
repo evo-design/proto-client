@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 from time import sleep as _sleep
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -33,7 +33,8 @@ class RunsNamespace:
     is a mechanical find-and-replace tracked in the integration PR.
     """
 
-    def __init__(self, http: httpx.Client):
+    def __init__(self, http: httpx.Client) -> None:
+        """Initialize with an httpx AsyncClient."""
         self._http = http
 
     # ------------------------------------------------------------------ runs
@@ -56,17 +57,15 @@ class RunsNamespace:
             body["webhook_url"] = webhook_url
         if webhook_metadata is not None:
             body["webhook_metadata"] = webhook_metadata
-        resp = self._http.post(
-            "/runs", params={"execute": str(execute).lower()}, json=body
-        )
+        resp = self._http.post("/runs", params={"execute": str(execute).lower()}, json=body)
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def get(self, run_id: str) -> dict[str, Any]:
         """GET /runs/{run_id} — fetch run status and stage results."""
         resp = self._http.get(f"/runs/{run_id}")
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def cancel(self, run_id: str) -> dict[str, Any]:
         """DELETE /runs/{run_id} — cancel a running job.
@@ -77,7 +76,7 @@ class RunsNamespace:
         """
         resp = self._http.delete(f"/runs/{run_id}")
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def run_stage(self, run_id: str, stage_index: int) -> dict[str, Any]:
         """POST /runs/{run_id}/stages/{stage_index}/start — run a single stage.
@@ -88,7 +87,7 @@ class RunsNamespace:
         """
         resp = self._http.post(f"/runs/{run_id}/stages/{stage_index}/start")
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     # ------------------------------------------------------------ validation
 
@@ -103,7 +102,7 @@ class RunsNamespace:
         """
         resp = self._http.post("/validate", json={"program_data": program_data})
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     # ------------------------------------------------------------- timepoints
 
@@ -129,9 +128,7 @@ class RunsNamespace:
             params["offset"] = offset
         if stage is None:
             if timepoint is not None:
-                raise ValueError(
-                    "timepoint filter is only supported when stage is specified"
-                )
+                raise ValueError("timepoint filter is only supported when stage is specified")
             url = f"/runs/{run_id}/timepoints"
         else:
             if timepoint is not None:
@@ -139,42 +136,34 @@ class RunsNamespace:
             url = f"/runs/{run_id}/stages/{stage}/timepoints"
         resp = self._http.get(url, params=params)
         resp.raise_for_status()
-        return resp.json()
+        return cast(list[dict[str, Any]], resp.json())
 
     # ------------------------------------------------------------- discovery
 
-    def list_constraints(
-        self,
-    ) -> list[dict[str, Any]]:
+    def list_constraints(self) -> list[dict[str, Any]]:
         """GET /constraints — list registered constraints with their params."""
         resp = self._http.get("/constraints")
         resp.raise_for_status()
-        return resp.json()
+        return cast(list[dict[str, Any]], resp.json())
 
-    def list_generators(
-        self,
-    ) -> list[dict[str, Any]]:
+    def list_generators(self) -> list[dict[str, Any]]:
         """GET /generators — list registered generators with their params."""
         resp = self._http.get("/generators")
         resp.raise_for_status()
-        return resp.json()
+        return cast(list[dict[str, Any]], resp.json())
 
-    def list_optimizers(
-        self,
-    ) -> list[dict[str, Any]]:
+    def list_optimizers(self) -> list[dict[str, Any]]:
         """GET /optimizers — list registered optimizers with their params."""
         resp = self._http.get("/optimizers")
         resp.raise_for_status()
-        return resp.json()
+        return cast(list[dict[str, Any]], resp.json())
 
     def _check_terminal(self, run_id: str, response: dict[str, Any]) -> dict[str, Any]:
         """Return the response if completed, raise if failed/cancelled."""
         state = response["status"]
         if state == "completed":
             return response
-        raise RuntimeError(
-            f"Run {run_id} ended with status={state!r}: {response.get('error_message')}"
-        )
+        raise RuntimeError(f"Run {run_id} ended with status={state!r}: {response.get('error_message')}")
 
     # ------------------------------------------------------------ convenience
 

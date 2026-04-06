@@ -30,6 +30,7 @@ class ProtoClient:
         Args:
             api_key: API key for authentication. Falls back to PROTO_API_KEY env var.
             tools_base_url: Base URL for the the tools API.
+            runs_base_url: Base URL for the the runs API.
             timeout: Default request timeout in seconds.
         """
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
@@ -56,15 +57,16 @@ class ProtoClient:
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""
-        errors: list[BaseException] = []
+        first_error: BaseException | None = None
         for c in self._clients:
             try:
                 c.close()
-            except Exception as e:
-                errors.append(e)
+            except Exception as e:  # noqa: PERF203
+                if first_error is None:
+                    first_error = e
         self._clients.clear()
-        if errors:
-            raise errors[0]
+        if first_error is not None:
+            raise first_error
 
     def __enter__(self) -> "ProtoClient":
         return self

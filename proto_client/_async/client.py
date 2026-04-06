@@ -29,13 +29,9 @@ class AsyncProtoClient:
         runs_base_url: str = "https://proto-language.evodesign.org",
         timeout: float = 600.0,
     ):
-        resolved_key = (
-            api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
-        )
+        resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
-            raise ValueError(
-                "api_key must not be empty. Pass a valid key or set PROTO_API_KEY."
-            )
+            raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
         headers: dict[str, str] = {}
         if resolved_key:
             headers["X-API-Key"] = resolved_key
@@ -59,9 +55,7 @@ class AsyncProtoClient:
     async def aclose(self) -> None:
         # Close in parallel; return_exceptions ensures one failure doesn't
         # leak the other client.
-        results = await asyncio.gather(
-            *(c.aclose() for c in self._clients), return_exceptions=True
-        )
+        results = await asyncio.gather(*(c.aclose() for c in self._clients), return_exceptions=True)
         self._clients.clear()
         for r in results:
             if isinstance(r, BaseException):
