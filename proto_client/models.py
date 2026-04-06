@@ -69,7 +69,7 @@ class JobResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     job_id: str
-    status: JobStatus = JobStatus.pending
+    status: JobStatus
 
 
 class JobStatusResponse(BaseModel):
