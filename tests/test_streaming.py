@@ -420,7 +420,9 @@ def test_sync_run_stream_propagates_create_error() -> None:
 
 def test_sync_stream_skips_malformed_json() -> None:
     """Non-JSON SSE data should be silently skipped, not crash the stream."""
-    raw = b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+    raw = (
+        b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/events":
@@ -441,7 +443,9 @@ def test_sync_stream_skips_malformed_json() -> None:
 @pytest.mark.asyncio
 async def test_async_stream_skips_malformed_json() -> None:
     """Non-JSON SSE data should be silently skipped, not crash the stream."""
-    raw = b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+    raw = (
+        b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/events":
