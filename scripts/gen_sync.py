@@ -101,6 +101,7 @@ def main() -> None:
         "an :class:`AsyncRunStream`": "a :class:`RunStream`",
         "Use as an async context manager and async iterator": "Use as a context manager and iterator",
         "        async with stream:": "        with stream:",
+        "both async-iterable and\n        an async context manager": ("both iterable and\n        a context manager"),
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name

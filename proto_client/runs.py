@@ -265,8 +265,8 @@ class RunsNamespace:
     ) -> RunStream:
         """Create a run and stream its events.
 
-        Returns a :class:`RunStream` that is both async-iterable and
-        an async context manager. After iteration completes, access the
+        Returns a :class:`RunStream` that is both iterable and
+        a context manager. After iteration completes, access the
         final result via ``.result``.
 
         Usage::
