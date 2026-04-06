@@ -31,9 +31,7 @@ def _sequence_handler(
     counter = SimpleNamespace(n=0)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert counter.n < len(responses), (
-            f"MockTransport exhausted at call #{counter.n + 1}"
-        )
+        assert counter.n < len(responses), f"MockTransport exhausted at call #{counter.n + 1}"
         item = responses[counter.n]
         counter.n += 1
         if isinstance(item, Exception):
@@ -113,9 +111,7 @@ def test_retry_config_rejects_invalid_values(kwargs: dict, match: str) -> None:
 
 @pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
 def test_retries_on_retriable_status(status: int) -> None:
-    transport, counter, _ = _sync_transport(
-        [_resp(status), _resp(200)], initial_delay=0.01
-    )
+    transport, counter, _ = _sync_transport([_resp(status), _resp(200)], initial_delay=0.01)
     assert _get(transport).status_code == 200
     assert counter.n == 2
 
@@ -133,9 +129,7 @@ def test_does_not_retry_on_non_retriable_status(status: int) -> None:
 
 
 def test_retries_on_connect_error_then_succeeds() -> None:
-    transport, counter, _ = _sync_transport(
-        [httpx.ConnectError("refused"), _resp(200)], initial_delay=0.01
-    )
+    transport, counter, _ = _sync_transport([httpx.ConnectError("refused"), _resp(200)], initial_delay=0.01)
     assert _get(transport).status_code == 200
     assert counter.n == 2
 
@@ -157,9 +151,7 @@ def test_max_retries_cap_returns_final_error_response() -> None:
 
 
 def test_max_retries_cap_reraises_final_exception() -> None:
-    transport, counter, delays = _sync_transport(
-        [httpx.ConnectError("down")] * 10, initial_delay=0.01
-    )
+    transport, counter, delays = _sync_transport([httpx.ConnectError("down")] * 10, initial_delay=0.01)
     with httpx.Client(transport=transport) as client:
         with pytest.raises(httpx.ConnectError):
             client.get(_URL)

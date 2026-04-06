@@ -63,9 +63,7 @@ def test_unknown_4xx_falls_back_to_base() -> None:
 
 
 def test_request_id_extracted_from_header() -> None:
-    err = from_response(
-        _response(500, {"detail": "oops"}, {"X-Request-ID": "req_abc123"})
-    )
+    err = from_response(_response(500, {"detail": "oops"}, {"X-Request-ID": "req_abc123"}))
     assert err.request_id == "req_abc123"
 
 
