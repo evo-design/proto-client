@@ -47,3 +47,17 @@ def test_client_closes_both_http_clients():
     c.close()
     assert tools_http.is_closed
     assert runs_http.is_closed
+
+
+def test_close_idempotent():
+    c = ProtoClient(
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+    )
+    tools_http = c.tools._http
+    runs_http = c.runs._http
+    c.close()
+    assert tools_http.is_closed
+    assert runs_http.is_closed
+    assert c._clients == []
+    c.close()  # second close on empty list should not raise

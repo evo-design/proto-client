@@ -6,6 +6,7 @@ import random
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -82,6 +83,31 @@ def _sync_transport(
 def _get(transport: RetryTransport) -> httpx.Response:
     with httpx.Client(transport=transport) as client:
         return client.get(_URL)
+
+
+async def _async_get(transport: AsyncRetryTransport) -> httpx.Response:
+    async with httpx.AsyncClient(transport=transport) as client:
+        return await client.get(_URL)
+
+
+def _async_transport(
+    responses: list[httpx.Response | Exception],
+    *,
+    max_retries: int = 2,
+    initial_delay: float = 0.5,
+    jitter: float = 0.0,
+    **cfg_kwargs: Any,
+) -> tuple[AsyncRetryTransport, SimpleNamespace, list[float]]:
+    handler, counter = _sequence_handler(responses)
+    delays, sleep = _capturing_async_sleep()
+    config = RetryConfig(
+        max_retries=max_retries,
+        initial_delay=initial_delay,
+        jitter=jitter,
+        **cfg_kwargs,
+    )
+    transport = AsyncRetryTransport(httpx.MockTransport(handler), config, sleep=sleep)
+    return transport, counter, delays
 
 
 # ----------------------------------------------------------------------- config
@@ -214,16 +240,127 @@ def test_mixed_exception_then_retriable_status_then_success() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_retries_on_500_then_succeeds() -> None:
-    handler, counter = _sequence_handler([_resp(500), _resp(200)])
-    delays, sleep = _capturing_async_sleep()
-    transport = AsyncRetryTransport(
-        httpx.MockTransport(handler),
-        RetryConfig(max_retries=2, initial_delay=0.5, jitter=0.0),
-        sleep=sleep,
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+async def test_async_retries_on_retriable_status(status: int) -> None:
+    transport, counter, _ = _async_transport(
+        [_resp(status), _resp(200)],
+        initial_delay=0.01,
     )
-    async with httpx.AsyncClient(transport=transport) as client:
-        resp = await client.get(_URL)
-    assert resp.status_code == 200
+    assert (await _async_get(transport)).status_code == 200
     assert counter.n == 2
-    assert delays == [0.5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422])
+async def test_async_does_not_retry_on_non_retriable_status(status: int) -> None:
+    transport, counter, delays = _async_transport(
+        [_resp(status, json={"detail": "nope"}), _resp(200)],
+        max_retries=3,
+        initial_delay=0.01,
+    )
+    assert (await _async_get(transport)).status_code == status
+    assert counter.n == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_async_retries_on_connect_error_then_succeeds() -> None:
+    transport, counter, _ = _async_transport(
+        [httpx.ConnectError("refused"), _resp(200)],
+        initial_delay=0.01,
+    )
+    assert (await _async_get(transport)).status_code == 200
+    assert counter.n == 2
+
+
+@pytest.mark.asyncio
+async def test_async_does_not_retry_on_non_retriable_exception() -> None:
+    transport, counter, delays = _async_transport([httpx.InvalidURL("bad url")])
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(httpx.InvalidURL):
+            await client.get(_URL)
+    assert counter.n == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_async_max_retries_cap_returns_final_error_response() -> None:
+    transport, counter, delays = _async_transport([_resp(503)] * 10, initial_delay=0.01)
+    assert (await _async_get(transport)).status_code == 503
+    assert counter.n == 3  # 1 initial + 2 retries
+    assert len(delays) == 2
+
+
+@pytest.mark.asyncio
+async def test_async_max_retries_cap_reraises_final_exception() -> None:
+    transport, counter, delays = _async_transport([httpx.ConnectError("down")] * 10, initial_delay=0.01)
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(httpx.ConnectError):
+            await client.get(_URL)
+    assert counter.n == 3
+    assert len(delays) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [429, 503])
+async def test_async_retry_after_header_overrides_backoff(status: int) -> None:
+    transport, _, delays = _async_transport(
+        [_resp(status, headers={"Retry-After": "7"}), _resp(200)],
+    )
+    assert (await _async_get(transport)).status_code == 200
+    assert delays == [7.0]
+
+
+@pytest.mark.asyncio
+async def test_async_exponential_backoff_across_attempts() -> None:
+    transport, _, delays = _async_transport(
+        [_resp(500), _resp(500), _resp(500), _resp(200)],
+        max_retries=3,
+        factor=2.0,
+        max_delay=30.0,
+    )
+    await _async_get(transport)
+    assert delays == [0.5, 1.0, 2.0]
+
+
+@pytest.mark.asyncio
+async def test_async_max_delay_cap() -> None:
+    transport, _, delays = _async_transport(
+        [_resp(500)] * 10,
+        max_retries=5,
+        initial_delay=10.0,
+        factor=10.0,
+        max_delay=15.0,
+    )
+    await _async_get(transport)
+    assert all(d <= 15.0 for d in delays)
+    assert delays[-1] == 15.0
+
+
+@pytest.mark.asyncio
+async def test_async_mixed_exception_then_retriable_status_then_success() -> None:
+    transport, counter, delays = _async_transport(
+        [httpx.ConnectError("refused"), _resp(503), _resp(200)],
+        max_retries=3,
+    )
+    assert (await _async_get(transport)).status_code == 200
+    assert counter.n == 3
+    assert delays == [0.5, 1.0]
+
+
+# ----------------------------------------------------------------- close / aclose
+
+
+def test_retry_transport_close_delegates() -> None:
+    inner = MagicMock(spec=httpx.BaseTransport)
+    transport = RetryTransport(inner)
+    transport.close()
+    inner.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_retry_transport_aclose_delegates() -> None:
+    inner = MagicMock(spec=httpx.AsyncBaseTransport)
+    transport = AsyncRetryTransport(inner)
+    await transport.aclose()
+    inner.aclose.assert_called_once()

@@ -21,7 +21,6 @@ intentionally diverge from their async counterparts.
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import unasync  # type: ignore[import-untyped]
@@ -39,13 +38,8 @@ SYNC_TARGETS = ["runs.py"]
 # Keys and values must be whole identifiers — unasync matches NAME tokens.
 ADDITIONAL_REPLACEMENTS = {
     "AsyncRunsNamespace": "RunsNamespace",
-    "AsyncRunStream": "RunStream",
     "AsyncClient": "Client",  # httpx.AsyncClient → httpx.Client
-    "AsyncGenerator": "Generator",
     "aclose": "close",
-    "aconnect_sse": "connect_sse",
-    "aiter_sse": "iter_sse",
-    "anext": "next",
     # `import asyncio` → `import time`; `asyncio.sleep` → `time.sleep`.
     # CAUTION: This replaces *all* `asyncio` tokens with `time`. Only add
     # asyncio usage that has a `time.*` sync equivalent (currently: sleep).
@@ -92,16 +86,6 @@ def main() -> None:
         "run = await client.runs.create(program_data={...})": ("run = client.runs.create(program_data={...})"),
         "status = await client.runs.get(run[": ("status = client.runs.get(run["),
         "Initialize with an httpx AsyncClient.": "Initialize with an httpx Client.",
-        # Streaming docstrings
-        "async for event in client.runs.stream(run_id):": "for event in client.runs.stream(run_id):",
-        "async with await client.runs.run_stream(program_data={...}) as stream:": (
-            "with client.runs.run_stream(program_data={...}) as stream:"
-        ),
-        "async for event in stream:": "for event in stream:",
-        "an :class:`AsyncRunStream`": "a :class:`RunStream`",
-        "Use as an async context manager and async iterator": "Use as a context manager and iterator",
-        "        async with stream:": "        with stream:",
-        "both async-iterable and\n        an async context manager": ("both iterable and\n        a context manager"),
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name
@@ -110,9 +94,6 @@ def main() -> None:
             if old not in content:
                 raise ValueError(f"Docstring fixup not found in {name} (async source changed?): {old[:60]!r}")
             content = content.replace(old, new)
-        # AsyncGenerator[Y, S] has 2 type params; Generator[Y, S, R] needs 3.
-        # Append the missing ReturnType=None after unasync's token rename.
-        content = re.sub(r"Generator\[(\w+), None\]", r"Generator[\1, None, None]", content)
         # Guard against accidental asyncio → time transforms (e.g. time.gather).
         _ALLOWED_TIME_ATTRS = {"time.monotonic", "time.sleep"}
         for match in re.finditer(r"time\.\w+", content):
@@ -125,14 +106,6 @@ def main() -> None:
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
         out.write_text(content)
-    # Fix import sorting — unasync preserves source order which may not
-    # match isort after token replacements (e.g. asyncio→time).
-    generated = [str(SYNC_DIR / name) for name in SYNC_TARGETS]
-    subprocess.run(  # noqa: S603 — fixed command, no user input
-        ["ruff", "check", "--fix", "--select", "I", *generated],  # noqa: S607 — ruff is a dev tool
-        check=False,
-        capture_output=True,
-    )
     print(f"Regenerated: {', '.join(SYNC_TARGETS)}")  # noqa: T201
 
 
