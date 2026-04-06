@@ -42,3 +42,10 @@ def test_runs_not_implemented():
     with ProtoClient(tools_base_url="http://localhost:9999") as c:
         with pytest.raises(NotImplementedError, match="not yet available"):
             c.runs.create({})
+
+
+def test_close_cleans_up():
+    c = ProtoClient(tools_base_url="http://localhost:9999")
+    assert len(c._clients) > 0
+    c.close()
+    assert len(c._clients) == 0
