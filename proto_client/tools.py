@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 import time
-from typing import Any, cast
+from typing import Any, TypeVar
 
 import httpx
+from pydantic import BaseModel, ValidationError
+
+from proto_client.errors import from_response
+from proto_client.models import (
+    JobResponse,
+    JobStatus,
+    JobStatusResponse,
+    ToolInfo,
+    ToolSchema,
+)
+
+T = TypeVar("T", bound=BaseModel)
 
 # Alias to avoid shadowing by the `list` method defined below.
 _list = list
@@ -25,11 +37,19 @@ class ToolsNamespace:
         """Initialize with an httpx Client."""
         self._http = http
 
-    def list(self) -> _list[dict[str, str]]:
+    def list(self) -> list[ToolInfo]:
         """List available tools."""
         resp = self._http.get("/api/v1/tools")
-        resp.raise_for_status()
-        return cast(_list[dict[str, str]], resp.json())
+        if resp.is_error:
+            raise from_response(resp)
+        return [ToolInfo.model_validate(item) for item in resp.json()]
+
+    def get_schema(self, tool_key: str) -> ToolSchema:
+        """Get JSON schemas for a tool's input, config, and output models."""
+        resp = self._http.get(f"/api/v1/tools/{tool_key}/schema")
+        if resp.is_error:
+            raise from_response(resp)
+        return ToolSchema.model_validate(resp.json())
 
     def submit(
         self,
@@ -42,8 +62,9 @@ class ToolsNamespace:
             f"/api/v1/tools/{tool_key}/run",
             json={"inputs": inputs, "config": config or {}},
         )
-        resp.raise_for_status()
-        return str(resp.json()["job_id"])
+        if resp.is_error:
+            raise from_response(resp)
+        return JobResponse.model_validate(resp.json()).job_id
 
     def submit_batch(
         self,
@@ -56,20 +77,23 @@ class ToolsNamespace:
             f"/api/v1/tools/{tool_key}/run-batch",
             json={"inputs_list": inputs_list, "config": config or {}},
         )
-        resp.raise_for_status()
-        return str(resp.json()["job_id"])
+        if resp.is_error:
+            raise from_response(resp)
+        return JobResponse.model_validate(resp.json()).job_id
 
-    def poll(self, tool_key: str, job_id: str) -> dict[str, Any]:
+    def get(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Get job status."""
         resp = self._http.get(f"/api/v1/tools/{tool_key}/jobs/{job_id}")
-        resp.raise_for_status()
-        return cast(dict[str, Any], resp.json())
+        if resp.is_error:
+            raise from_response(resp)
+        return JobStatusResponse.model_validate(resp.json())
 
-    def cancel(self, tool_key: str, job_id: str) -> dict[str, Any]:
+    def cancel(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Cancel a job."""
         resp = self._http.post(f"/api/v1/tools/{tool_key}/jobs/{job_id}/cancel")
-        resp.raise_for_status()
-        return cast(dict[str, Any], resp.json())
+        if resp.is_error:
+            raise from_response(resp)
+        return JobStatusResponse.model_validate(resp.json())
 
     def run(
         self,
@@ -78,13 +102,18 @@ class ToolsNamespace:
         config: dict[str, Any] | None = None,
         poll_interval: float = 1.0,
         timeout: float = 600.0,
-    ) -> dict[str, Any]:
-        """Submit and poll until completion. Returns the result dict.
+        *,
+        output_model: type[T] | None = None,
+    ) -> JobStatusResponse:
+        """Submit and poll until completion. Returns the full job envelope.
+
+        Pass ``output_model=MyModel`` to validate the ``result`` dict into a
+        typed Pydantic instance, swapped into ``response.result`` at runtime.
 
         Raises RuntimeError on failure/cancellation, TimeoutError on timeout.
         """
         job_id = self.submit(tool_key, inputs, config)
-        return self._wait(tool_key, job_id, poll_interval, timeout)
+        return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     def run_batch(
         self,
@@ -93,10 +122,17 @@ class ToolsNamespace:
         config: dict[str, Any] | None = None,
         poll_interval: float = 1.0,
         timeout: float = 600.0,
-    ) -> dict[str, Any]:
-        """Submit batch and poll until completion."""
+        *,
+        output_model: type[T] | None = None,
+    ) -> JobStatusResponse:
+        """Submit batch and poll until completion.
+
+        Currently returns a single ``JobStatusResponse`` envelope. If the API
+        evolves to return per-input results, the return type will change to
+        ``list[JobStatusResponse]``.
+        """
         job_id = self.submit_batch(tool_key, inputs_list, config)
-        return self._wait(tool_key, job_id, poll_interval, timeout)
+        return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     def _wait(
         self,
@@ -104,16 +140,30 @@ class ToolsNamespace:
         job_id: str,
         poll_interval: float,
         timeout: float,
-    ) -> dict[str, Any]:
+        output_model: type[T] | None,
+    ) -> JobStatusResponse:
         """Poll until terminal status."""
         deadline = time.monotonic() + timeout
         while True:
-            status = self.poll(tool_key, job_id)
-            if status["status"] == "completed":
-                return cast(dict[str, Any], status.get("result", {}))
-            if status["status"] == "failed":
-                raise RuntimeError(f"Job {job_id} failed: {status.get('error')}")
-            if status["status"] == "cancelled":
+            status = self.get(tool_key, job_id)
+            if status.status is JobStatus.completed:
+                if output_model is not None:
+                    if not isinstance(status.result, dict):
+                        raise TypeError(
+                            f"Job {job_id} completed with no result, "
+                            f"but output_model={output_model.__name__} was requested"
+                        )
+                    try:
+                        parsed = output_model.model_validate(status.result)
+                    except ValidationError as exc:
+                        raise TypeError(
+                            f"Job {job_id} result does not conform to {output_model.__name__}: {exc}"
+                        ) from exc
+                    status = status.model_copy(update={"result": parsed})
+                return status
+            if status.status is JobStatus.failed:
+                raise RuntimeError(f"Job {job_id} failed: {status.error}")
+            if status.status is JobStatus.cancelled:
                 raise RuntimeError(f"Job {job_id} was cancelled")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
