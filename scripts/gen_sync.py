@@ -92,6 +92,17 @@ def main() -> None:
             if old not in content:
                 raise ValueError(f"Docstring fixup not found in {name} (async source changed?): {old[:60]!r}")
             content = content.replace(old, new)
+        # Guard against accidental asyncio → time transforms (e.g. time.gather).
+        _ALLOWED_TIME_ATTRS = {"time.monotonic", "time.sleep"}
+        import re
+
+        for match in re.finditer(r"time\.\w+", content):
+            if match.group() not in _ALLOWED_TIME_ATTRS:
+                raise ValueError(
+                    f"Unexpected 'time.' usage in generated {name}: {match.group()!r}. "
+                    f"The asyncio→time token replacement likely mangled an asyncio API. "
+                    f"Add a targeted replacement rule instead of relying on the blanket rename."
+                )
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
         out.write_text(content)

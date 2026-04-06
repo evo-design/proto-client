@@ -48,5 +48,5 @@ async def test_async_client_empty_key_raises():
 async def test_async_tools_namespace_skeleton_raises():
     """AsyncToolsNamespace is a stub pending issue #2 integration."""
     async with AsyncProtoClient(tools_base_url="http://localhost:9999") as c:
-        with pytest.raises(NotImplementedError, match="issue #2"):
+        with pytest.raises(NotImplementedError, match="pending async implementation"):
             await c.tools.list()
