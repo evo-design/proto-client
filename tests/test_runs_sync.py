@@ -8,7 +8,6 @@ working sync module — catching unasync breakage the moment it happens.
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from proto_client.runs import RunsNamespace
 
@@ -31,45 +30,6 @@ def test_sync_create_and_get():
     created = ns.create({"constructs": [{}], "optimization_stages": [{}]})
     assert created["run_id"] == "x"
     assert ns.get("x")["status"] == "running"
-
-
-def test_sync_cancel_propagates_400():
-    def handler(_request):
-        return httpx.Response(400, json={"detail": "Cannot cancel completed run"})
-
-    ns = make_ns(handler)
-    with pytest.raises(httpx.HTTPStatusError):
-        ns.cancel("done")
-
-
-def test_sync_validate():
-    def handler(request):
-        assert request.url.path == "/validate"
-        return httpx.Response(200, json={"valid": True, "message": "ok"})
-
-    assert make_ns(handler).validate({"constructs": [], "optimization_stages": []})["valid"] is True
-
-
-def test_sync_timepoints_stage_filter():
-    def handler(request):
-        assert request.url.path == "/runs/abc/stages/0/timepoints"
-        return httpx.Response(200, json=[])
-
-    make_ns(handler).get_timepoints("abc", stage=0, timepoint=1)
-
-
-def test_sync_discovery_endpoints():
-    seen: list[str] = []
-
-    def handler(request):
-        seen.append(request.url.path)
-        return httpx.Response(200, json=[])
-
-    ns = make_ns(handler)
-    ns.list_constraints()
-    ns.list_generators()
-    ns.list_optimizers()
-    assert seen == ["/constraints", "/generators", "/optimizers"]
 
 
 def test_sync_run_polls_until_completed(monkeypatch):

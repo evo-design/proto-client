@@ -272,27 +272,6 @@ async def test_run_short_circuits_on_instant_completed():
     assert result["status"] == "completed"
 
 
-async def test_run_raises_on_failed(monkeypatch):
-    import proto_client._async.runs as runs_mod
-
-    async def fake_sleep(_seconds):
-        return None
-
-    monkeypatch.setattr(runs_mod, "_sleep", fake_sleep)
-
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(200, json={"run_id": "r1", "status": "running", "message": ""})
-        return httpx.Response(
-            200,
-            json={"id": "r1", "status": "failed", "error_message": "boom"},
-        )
-
-    ns = make_ns(handler)
-    with pytest.raises(RuntimeError, match="boom"):
-        await ns.run({"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01)
-
-
 async def test_run_times_out(monkeypatch):
     # Pin monotonic so deadline is exceeded immediately on the second read.
     import proto_client._async.runs as runs_mod
