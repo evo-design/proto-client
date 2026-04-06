@@ -51,6 +51,12 @@ _FAILED_DATA: dict[str, Any] = {
     "timestamp": "2026-04-05T00:01:00Z",
     "error_message": "GPU OOM",
 }
+_CANCELLED_DATA: dict[str, Any] = {
+    "run_id": "r1",
+    "status": "cancelled",
+    "timestamp": "2026-04-05T00:01:00Z",
+    "message": "User cancelled",
+}
 _CONNECTED_DATA: dict[str, Any] = {
     "run_id": "r1",
     "message": "Connected to run stream",
@@ -66,7 +72,7 @@ def _sse_transport(
     body = _sse_body(*sse_events)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if "/events" in str(request.url):
+        if request.url.path == "/events":
             return httpx.Response(
                 200,
                 content=body,
@@ -344,6 +350,55 @@ def test_sync_stream_early_close_does_not_raise() -> None:
     assert stream.result is None
 
 
+def test_sync_stream_cancelled_event_sets_final_event() -> None:
+    transport = _sse_transport([("progress", _PROGRESS_DATA), ("cancelled", _CANCELLED_DATA)])
+    with httpx.Client(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client.runs import RunsNamespace
+
+        ns = RunsNamespace(http)
+        with ns.run_stream(program_data={"constructs": []}) as stream:
+            events = list(stream)
+
+    assert len(events) == 2
+    assert isinstance(events[1], CancelledEvent)
+    assert stream.result is None
+    assert isinstance(stream.final_event, CancelledEvent)
+
+
+@pytest.mark.asyncio
+async def test_async_stream_failed_event_sets_final_event() -> None:
+    transport = _sse_transport([("progress", _PROGRESS_DATA), ("failed", _FAILED_DATA)])
+    async with httpx.AsyncClient(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client._async.runs import AsyncRunsNamespace
+
+        ns = AsyncRunsNamespace(http)
+        stream = await ns.run_stream(program_data={"constructs": []})
+        async with stream:
+            events = [e async for e in stream]
+
+    assert len(events) == 2
+    assert isinstance(events[1], FailedEvent)
+    assert stream.result is None
+    assert isinstance(stream.final_event, FailedEvent)
+
+
+@pytest.mark.asyncio
+async def test_async_stream_cancelled_event_sets_final_event() -> None:
+    transport = _sse_transport([("progress", _PROGRESS_DATA), ("cancelled", _CANCELLED_DATA)])
+    async with httpx.AsyncClient(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client._async.runs import AsyncRunsNamespace
+
+        ns = AsyncRunsNamespace(http)
+        stream = await ns.run_stream(program_data={"constructs": []})
+        async with stream:
+            events = [e async for e in stream]
+
+    assert len(events) == 2
+    assert isinstance(events[1], CancelledEvent)
+    assert stream.result is None
+    assert isinstance(stream.final_event, CancelledEvent)
+
+
 def test_sync_run_stream_propagates_create_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
@@ -358,3 +413,47 @@ def test_sync_run_stream_propagates_create_error() -> None:
         ns = RunsNamespace(http)
         with pytest.raises(ProtoValidationError):
             ns.run_stream(program_data={"bad": "data"})
+
+
+# ----------------------------------------------------------- malformed SSE data
+
+
+def test_sync_stream_skips_malformed_json() -> None:
+    """Non-JSON SSE data should be silently skipped, not crash the stream."""
+    raw = b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/events":
+            return httpx.Response(200, content=raw, headers={"content-type": "text/event-stream"}, request=request)
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client.runs import RunsNamespace
+
+        ns = RunsNamespace(http)
+        events = list(ns.stream("r1"))
+
+    assert len(events) == 1
+    assert isinstance(events[0], CompletedEvent)
+
+
+@pytest.mark.asyncio
+async def test_async_stream_skips_malformed_json() -> None:
+    """Non-JSON SSE data should be silently skipped, not crash the stream."""
+    raw = b"event: progress\ndata: not-json\n\nevent: completed\ndata: " + json.dumps(_COMPLETED_DATA).encode() + b"\n\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/events":
+            return httpx.Response(200, content=raw, headers={"content-type": "text/event-stream"}, request=request)
+        return httpx.Response(404, request=request)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client._async.runs import AsyncRunsNamespace
+
+        ns = AsyncRunsNamespace(http)
+        events = [e async for e in ns.stream("r1")]
+
+    assert len(events) == 1
+    assert isinstance(events[0], CompletedEvent)

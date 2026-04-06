@@ -237,6 +237,14 @@ class AsyncRunsNamespace:
         connection closes when the generator is exhausted or explicitly
         closed. Skips the server's ``connected`` keep-alive event.
 
+        .. note::
+
+           The SSE connection inherits the httpx client timeout for the
+           initial connect, but there is no read timeout between events.
+           If the server hangs without closing the connection, the client
+           will block indefinitely. Use :meth:`run` (polling) as a
+           fallback for timeout-sensitive callers.
+
         Usage::
 
             async for event in client.runs.stream(run_id):
@@ -250,7 +258,11 @@ class AsyncRunsNamespace:
             if es.response.is_error:
                 raise from_response(es.response)
             async for sse in es.aiter_sse():
-                event = parse_sse_event(sse.event, sse.json())
+                try:
+                    data = sse.json()
+                except ValueError:
+                    continue
+                event = parse_sse_event(sse.event, data)
                 if event is not None:
                     yield event
 
@@ -266,6 +278,13 @@ class AsyncRunsNamespace:
         Returns an :class:`AsyncRunStream` that is both async-iterable and
         an async context manager. After iteration completes, access the
         final result via ``.result``.
+
+        .. note::
+
+           The SSE connection is opened *after* the run is created. Events
+           emitted between ``create()`` returning and the SSE connect may
+           be missed (typically only the earliest progress events). The
+           terminal event is never lost.
 
         Usage::
 

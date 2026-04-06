@@ -1,6 +1,7 @@
 """Proto Bio Python SDK."""
 
 from proto_client._async.client import AsyncProtoClient
+from proto_client._async.runs import AsyncRunStream
 from proto_client.client import ProtoClient
 from proto_client.errors import (
     ProtoAPIError,
@@ -28,9 +29,11 @@ from proto_client.models import (
     ToolInfo,
     ToolSchema,
 )
+from proto_client.runs import RunStream
 
 __all__ = [
     "AsyncProtoClient",
+    "AsyncRunStream",
     "CancelledEvent",
     "CompletedEvent",
     "FailedEvent",
@@ -49,6 +52,7 @@ __all__ = [
     "RunCancelledError",
     "RunEvent",
     "RunFailedError",
+    "RunStream",
     "StageCompleteEvent",
     "ToolInfo",
     "ToolSchema",
