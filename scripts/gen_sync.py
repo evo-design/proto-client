@@ -21,6 +21,7 @@ intentionally diverge from their async counterparts.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import unasync  # type: ignore[import-untyped]
@@ -38,8 +39,12 @@ SYNC_TARGETS = ["runs.py"]
 # Keys and values must be whole identifiers — unasync matches NAME tokens.
 ADDITIONAL_REPLACEMENTS = {
     "AsyncRunsNamespace": "RunsNamespace",
+    "AsyncRunStream": "RunStream",
     "AsyncClient": "Client",  # httpx.AsyncClient → httpx.Client
+    "AsyncIterator": "Iterator",
     "aclose": "close",
+    "aconnect_sse": "connect_sse",
+    "aiter_sse": "iter_sse",
     # `import asyncio` → `import time`; `asyncio.sleep` → `time.sleep`.
     # CAUTION: This replaces *all* `asyncio` tokens with `time`. Only add
     # asyncio usage that has a `time.*` sync equivalent (currently: sleep).
@@ -86,6 +91,19 @@ def main() -> None:
         "run = await client.runs.create(program_data={...})": ("run = client.runs.create(program_data={...})"),
         "status = await client.runs.get(run[": ("status = client.runs.get(run["),
         "Initialize with an httpx AsyncClient.": "Initialize with an httpx Client.",
+        # Streaming docstrings
+        "async for event in client.runs.stream(run_id):": "for event in client.runs.stream(run_id):",
+        "async with await client.runs.run_stream(program_data={...}) as stream:": (
+            "with client.runs.run_stream(program_data={...}) as stream:"
+        ),
+        "async for event in stream:": "for event in stream:",
+        "an :class:`AsyncRunStream`": "a :class:`RunStream`",
+        "Use as an async context manager and async iterator": "Use as a context manager and iterator",
+        "Enter the async context.": "Enter the context.",
+        "Exit the async context and close the stream.": "Exit the context and close the stream.",
+        "Return self as the async iterator.": "Return self as the iterator.",
+        "Yield the next event, capturing completed results.": "Yield the next event, capturing completed results.",
+        "Initialize with a run ID and an event stream.": "Initialize with a run ID and an event stream.",
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name
@@ -106,6 +124,14 @@ def main() -> None:
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
         out.write_text(content)
+    # Fix import sorting — unasync preserves source order which may not
+    # match isort after token replacements (e.g. asyncio→time).
+    generated = [str(SYNC_DIR / name) for name in SYNC_TARGETS]
+    subprocess.run(  # noqa: S603
+        ["ruff", "check", "--fix", "--select", "I", *generated],  # noqa: S607
+        check=False,
+        capture_output=True,
+    )
     print(f"Regenerated: {', '.join(SYNC_TARGETS)}")  # noqa: T201
 
 

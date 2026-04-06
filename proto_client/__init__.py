@@ -13,6 +13,14 @@ from proto_client.errors import (
     RunCancelledError,
     RunFailedError,
 )
+from proto_client.events import (
+    CancelledEvent,
+    CompletedEvent,
+    FailedEvent,
+    ProgressEvent,
+    RunEvent,
+    StageCompleteEvent,
+)
 from proto_client.models import (
     JobResponse,
     JobStatus,
@@ -23,9 +31,13 @@ from proto_client.models import (
 
 __all__ = [
     "AsyncProtoClient",
+    "CancelledEvent",
+    "CompletedEvent",
+    "FailedEvent",
     "JobResponse",
     "JobStatus",
     "JobStatusResponse",
+    "ProgressEvent",
     "ProtoAPIError",
     "ProtoAuthError",
     "ProtoClient",
@@ -35,7 +47,9 @@ __all__ = [
     "ProtoServerError",
     "ProtoValidationError",
     "RunCancelledError",
+    "RunEvent",
     "RunFailedError",
+    "StageCompleteEvent",
     "ToolInfo",
     "ToolSchema",
 ]

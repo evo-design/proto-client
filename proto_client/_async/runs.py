@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import time
 from asyncio import sleep as _sleep
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import httpx
+from httpx_sse import aconnect_sse
 
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
+from proto_client.events import CompletedEvent, RunEvent, parse_sse_event
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -223,3 +226,105 @@ class AsyncRunsNamespace:
             if remaining <= 0:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
             await _sleep(min(poll_interval, remaining))
+
+    # -------------------------------------------------------------- streaming
+
+    async def stream(self, run_id: str) -> AsyncIterator[RunEvent]:
+        """Stream SSE events for a run.
+
+        Connects to ``GET /events?run_id={run_id}`` and yields typed
+        :class:`~proto_client.events.RunEvent` subclasses. The SSE
+        connection closes when the generator is exhausted or explicitly
+        closed. Skips the server's ``connected`` keep-alive event.
+
+        Usage::
+
+            async for event in client.runs.stream(run_id):
+                match event.type:
+                    case "progress":
+                        print(event.progress_percent)
+                    case "completed":
+                        print(event.stage_results)
+        """
+        async with aconnect_sse(self._http, "GET", "/events", params={"run_id": run_id}) as es:
+            if es.response.is_error:
+                raise from_response(es.response)
+            async for sse in es.aiter_sse():
+                event = parse_sse_event(sse.event, sse.json())
+                if event is not None:
+                    yield event
+
+    async def run_stream(
+        self,
+        program_data: dict[str, Any],
+        execute: bool = True,
+        webhook_url: str | None = None,
+        webhook_metadata: dict[str, Any] | None = None,
+    ) -> AsyncRunStream:
+        """Create a run and stream its events.
+
+        Returns an :class:`AsyncRunStream` that is both async-iterable and
+        an async context manager. After iteration completes, access the
+        final result via ``.result``.
+
+        Usage::
+
+            async with await client.runs.run_stream(program_data={...}) as stream:
+                async for event in stream:
+                    print(event.type)
+                print(stream.result)
+        """
+        created = await self.create(
+            program_data,
+            execute=execute,
+            webhook_url=webhook_url,
+            webhook_metadata=webhook_metadata,
+        )
+        run_id: str = created["run_id"]
+        return AsyncRunStream(run_id=run_id, stream=self.stream(run_id))
+
+
+class AsyncRunStream:
+    """Wrapper that iterates run events and captures the final result.
+
+    Use as an async context manager and async iterator::
+
+        async with stream:
+            async for event in stream:
+                ...
+        final = stream.result
+    """
+
+    def __init__(self, run_id: str, stream: AsyncIterator[RunEvent]) -> None:
+        """Initialize with a run ID and an event stream."""
+        self.run_id = run_id
+        self._stream = stream
+        self._result: dict[str, Any] | None = None
+
+    async def __aenter__(self) -> AsyncRunStream:
+        """Enter the async context."""
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        """Exit the async context and close the stream."""
+        await self.close()
+
+    def __aiter__(self) -> AsyncRunStream:
+        """Return self as the async iterator."""
+        return self
+
+    async def __anext__(self) -> RunEvent:
+        """Yield the next event, capturing completed results."""
+        event = await self._stream.__anext__()
+        if isinstance(event, CompletedEvent):
+            self._result = event.data
+        return event
+
+    @property
+    def result(self) -> dict[str, Any] | None:
+        """The completed event's data, or ``None`` if not yet finished."""
+        return self._result
+
+    async def close(self) -> None:
+        """Close the underlying SSE connection."""
+        await self._stream.aclose()
