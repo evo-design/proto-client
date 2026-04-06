@@ -182,13 +182,14 @@ def test_submit_batch(mock_http):
 def test_run_batch_polls_until_complete(mock_http):
     mock_http.post.return_value = _mock_response({"job_id": "b1", "status": "pending"}, 202)
     mock_http.get.side_effect = [
-        _mock_response({"job_id": "b1", "status": "running"}),
+        _mock_response(_job_payload("running", job_id="b1")),
         _mock_response(
-            {
-                "job_id": "b1",
-                "status": "completed",
-                "result": {"hits": [{"id": "prot1"}, {"id": "prot2"}]},
-            }
+            _job_payload(
+                "completed",
+                job_id="b1",
+                result={"hits": [{"id": "prot1"}, {"id": "prot2"}]},
+                completed=True,
+            )
         ),
     ]
 
@@ -199,7 +200,7 @@ def test_run_batch_polls_until_complete(mock_http):
         poll_interval=0.01,
     )
 
-    assert result == {"hits": [{"id": "prot1"}, {"id": "prot2"}]}
+    assert result.result == {"hits": [{"id": "prot1"}, {"id": "prot2"}]}
     assert mock_http.get.call_count == 2
 
 
@@ -218,7 +219,7 @@ def test_submit_with_config(mock_http):
 
 def test_run_raises_on_cancelled(mock_http):
     mock_http.post.return_value = _mock_response({"job_id": "j1", "status": "pending"}, 202)
-    mock_http.get.return_value = _mock_response({"job_id": "j1", "status": "cancelled"})
+    mock_http.get.return_value = _mock_response(_job_payload("cancelled", job_id="j1", completed=True))
 
     ns = ToolsNamespace(mock_http)
     with pytest.raises(RuntimeError, match="cancelled"):
