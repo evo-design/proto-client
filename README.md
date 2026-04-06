@@ -40,8 +40,8 @@ Set `PROTO_API_KEY` to skip passing `api_key=` each time.
 truth. The sync `RunsNamespace` (`proto_client/runs.py`) is **generated**
 from it via [unasync](https://github.com/python-trio/unasync) — a
 token-level transform configured in `scripts/gen_sync.py`. The generated
-file is committed to the repo, and a pre-commit hook regenerates it
-whenever the async source changes. To regenerate manually:
+file is committed to the repo, and a CI check verifies it stays in sync.
+To regenerate manually:
 
 ```bash
 python scripts/gen_sync.py

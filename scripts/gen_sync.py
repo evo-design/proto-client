@@ -9,7 +9,8 @@ Run manually::
 
     python scripts/gen_sync.py
 
-Or via the ``unasync`` pre-commit hook wired up in ``.pre-commit-config.yaml``.
+CI verifies the generated file stays in sync (``Verify Generated Sync Modules``
+job in ``.github/workflows/checks.yml``).
 
 Only files explicitly listed in ``SYNC_TARGETS`` are transformed — we do
 NOT point ``todir`` at the whole ``proto_client/`` package, because that
@@ -19,6 +20,7 @@ intentionally diverge from their async counterparts.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import unasync  # type: ignore[import-untyped]
@@ -94,8 +96,6 @@ def main() -> None:
             content = content.replace(old, new)
         # Guard against accidental asyncio → time transforms (e.g. time.gather).
         _ALLOWED_TIME_ATTRS = {"time.monotonic", "time.sleep"}
-        import re
-
         for match in re.finditer(r"time\.\w+", content):
             if match.group() not in _ALLOWED_TIME_ATTRS:
                 raise ValueError(
