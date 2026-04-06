@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from asyncio import sleep as _sleep
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any, cast
 
 import httpx
@@ -229,7 +229,7 @@ class AsyncRunsNamespace:
 
     # -------------------------------------------------------------- streaming
 
-    async def stream(self, run_id: str) -> AsyncIterator[RunEvent]:
+    async def stream(self, run_id: str) -> AsyncGenerator[RunEvent, None]:
         """Stream SSE events for a run.
 
         Connects to ``GET /events?run_id={run_id}`` and yields typed
@@ -301,7 +301,7 @@ class AsyncRunStream:
     caller to handle.
     """
 
-    def __init__(self, run_id: str, stream: AsyncIterator[RunEvent]) -> None:
+    def __init__(self, run_id: str, stream: AsyncGenerator[RunEvent, None]) -> None:
         """Wrap *stream* to capture the completed result for *run_id*."""
         self.run_id = run_id
         self._stream = stream

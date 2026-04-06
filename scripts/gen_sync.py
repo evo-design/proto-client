@@ -41,7 +41,7 @@ ADDITIONAL_REPLACEMENTS = {
     "AsyncRunsNamespace": "RunsNamespace",
     "AsyncRunStream": "RunStream",
     "AsyncClient": "Client",  # httpx.AsyncClient → httpx.Client
-    "AsyncIterator": "Iterator",
+    "AsyncGenerator": "Generator",
     "aclose": "close",
     "aconnect_sse": "connect_sse",
     "aiter_sse": "iter_sse",
@@ -110,6 +110,9 @@ def main() -> None:
             if old not in content:
                 raise ValueError(f"Docstring fixup not found in {name} (async source changed?): {old[:60]!r}")
             content = content.replace(old, new)
+        # AsyncGenerator[Y, S] has 2 type params; Generator[Y, S, R] needs 3.
+        # Append the missing ReturnType=None after unasync's token rename.
+        content = re.sub(r"Generator\[(\w+), None\]", r"Generator[\1, None, None]", content)
         # Guard against accidental asyncio → time transforms (e.g. time.gather).
         _ALLOWED_TIME_ATTRS = {"time.monotonic", "time.sleep"}
         for match in re.finditer(r"time\.\w+", content):
