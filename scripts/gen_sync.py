@@ -124,8 +124,8 @@ def main() -> None:
     # Fix import sorting — unasync preserves source order which may not
     # match isort after token replacements (e.g. asyncio→time).
     generated = [str(SYNC_DIR / name) for name in SYNC_TARGETS]
-    subprocess.run(  # noqa: S603
-        ["ruff", "check", "--fix", "--select", "I", *generated],  # noqa: S607
+    subprocess.run(  # noqa: S603 — fixed command, no user input
+        ["ruff", "check", "--fix", "--select", "I", *generated],  # noqa: S607 — ruff is a dev tool
         check=False,
         capture_output=True,
     )
