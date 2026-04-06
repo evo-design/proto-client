@@ -5,18 +5,29 @@ This module is the source of truth. The sync counterpart
 ``scripts/gen_sync.py``. Do not edit the generated sync file by hand.
 """
 
-from __future__ import annotations
-
+import logging
 import time
 from asyncio import sleep as _sleep
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
+from proto_client.models import (
+    ConstraintSpec,
+    CreateRunResponse,
+    GeneratorSpec,
+    OptimizerSpec,
+    RunResponse,
+    RunStatus,
+    StageTimepointHistory,
+    ValidationResponse,
+)
+
+logger = logging.getLogger("proto_client.runs")
 
 # Terminal run statuses — polling stops when a run reaches any of these.
-_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_TERMINAL_STATUSES = frozenset({RunStatus.completed, RunStatus.failed, RunStatus.cancelled})
 
 
 class AsyncRunsNamespace:
@@ -26,11 +37,7 @@ class AsyncRunsNamespace:
 
         async with AsyncProtoClient(...) as client:
             run = await client.runs.create(program_data={...})
-            status = await client.runs.get(run["run_id"])
-
-    Return types are currently ``dict[str, Any]``. Issue #2 (typed Pydantic
-    models) will replace them wholesale once its ``models.py`` lands — this
-    is a mechanical find-and-replace tracked in the integration PR.
+            status = await client.runs.get(run.run_id)
     """
 
     def __init__(self, http: httpx.AsyncClient) -> None:
@@ -45,7 +52,7 @@ class AsyncRunsNamespace:
         execute: bool = True,
         webhook_url: str | None = None,
         webhook_metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> CreateRunResponse:
         """POST /runs — create an optimization run.
 
         With ``execute=True`` (default) the server begins running stages
@@ -57,57 +64,70 @@ class AsyncRunsNamespace:
             body["webhook_url"] = webhook_url
         if webhook_metadata is not None:
             body["webhook_metadata"] = webhook_metadata
+        logger.debug("POST /runs")
         resp = await self._http.post("/runs", params={"execute": str(execute).lower()}, json=body)
+        logger.debug("POST /runs -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(dict[str, Any], resp.json())
+        return CreateRunResponse.model_validate(resp.json())
 
-    async def get(self, run_id: str) -> dict[str, Any]:
+    async def get(self, run_id: str) -> RunResponse:
         """GET /runs/{run_id} — fetch run status and stage results."""
-        resp = await self._http.get(f"/runs/{run_id}")
+        path = f"/runs/{run_id}"
+        logger.debug("GET %s", path)
+        resp = await self._http.get(path)
+        logger.debug("GET %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(dict[str, Any], resp.json())
+        return RunResponse.model_validate(resp.json())
 
-    async def cancel(self, run_id: str) -> dict[str, Any]:
+    async def cancel(self, run_id: str) -> RunResponse:
         """DELETE /runs/{run_id} — cancel a running job.
 
         Propagates the server's 400 if the run is already in a completed or
         failed terminal state; callers need to know that cancelling a finished
         run is a no-op, not silently swallowed.
         """
-        resp = await self._http.delete(f"/runs/{run_id}")
+        path = f"/runs/{run_id}"
+        logger.debug("DELETE %s", path)
+        resp = await self._http.delete(path)
+        logger.debug("DELETE %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(dict[str, Any], resp.json())
+        return RunResponse.model_validate(resp.json())
 
-    async def run_stage(self, run_id: str, stage_index: int) -> dict[str, Any]:
+    async def run_stage(self, run_id: str, stage_index: int) -> RunResponse:
         """POST /runs/{run_id}/stages/{stage_index}/start — run a single stage.
 
         Used for incremental execution (after ``create(..., execute=False)``)
         and for re-running a failed stage — the latter is a common beta-user
         recovery path.
         """
-        resp = await self._http.post(f"/runs/{run_id}/stages/{stage_index}/start")
+        path = f"/runs/{run_id}/stages/{stage_index}/start"
+        logger.debug("POST %s", path)
+        resp = await self._http.post(path)
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(dict[str, Any], resp.json())
+        return RunResponse.model_validate(resp.json())
 
     # ------------------------------------------------------------ validation
 
     async def validate(
         self,
         program_data: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> ValidationResponse:
         """POST /validate — validate a program without creating a run.
 
         Raises ``ProtoValidationError`` (422) when the program is invalid;
         the response body carries a structured ``{"errors": [...]}`` detail.
         """
+        logger.debug("POST /validate")
         resp = await self._http.post("/validate", json={"program_data": program_data})
+        logger.debug("POST /validate -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(dict[str, Any], resp.json())
+        return ValidationResponse.model_validate(resp.json())
 
     # ------------------------------------------------------------- timepoints
 
@@ -118,7 +138,7 @@ class AsyncRunsNamespace:
         offset: int | None = None,
         limit: int = 10000,
         timepoint: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[StageTimepointHistory]:
         """Get optimization timepoints for a run.
 
         When ``stage`` is ``None`` hits ``GET /runs/{run_id}/timepoints`` and
@@ -139,45 +159,54 @@ class AsyncRunsNamespace:
             if timepoint is not None:
                 params["timepoint"] = timepoint
             url = f"/runs/{run_id}/stages/{stage}/timepoints"
+        logger.debug("GET %s", url)
         resp = await self._http.get(url, params=params)
+        logger.debug("GET %s -> %d", url, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(list[dict[str, Any]], resp.json())
+        return [StageTimepointHistory.model_validate(item) for item in resp.json()]
 
     # ------------------------------------------------------------- discovery
 
-    async def list_constraints(self) -> list[dict[str, Any]]:
+    async def list_constraints(self) -> list[ConstraintSpec]:
         """GET /constraints — list registered constraints with their params."""
+        logger.debug("GET /constraints")
         resp = await self._http.get("/constraints")
+        logger.debug("GET /constraints -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(list[dict[str, Any]], resp.json())
+        return [ConstraintSpec.model_validate(item) for item in resp.json()]
 
-    async def list_generators(self) -> list[dict[str, Any]]:
+    async def list_generators(self) -> list[GeneratorSpec]:
         """GET /generators — list registered generators with their params."""
+        logger.debug("GET /generators")
         resp = await self._http.get("/generators")
+        logger.debug("GET /generators -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(list[dict[str, Any]], resp.json())
+        return [GeneratorSpec.model_validate(item) for item in resp.json()]
 
-    async def list_optimizers(self) -> list[dict[str, Any]]:
+    async def list_optimizers(self) -> list[OptimizerSpec]:
         """GET /optimizers — list registered optimizers with their params."""
+        logger.debug("GET /optimizers")
         resp = await self._http.get("/optimizers")
+        logger.debug("GET /optimizers -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return cast(list[dict[str, Any]], resp.json())
+        return [OptimizerSpec.model_validate(item) for item in resp.json()]
 
     @staticmethod
-    def _check_terminal(run_id: str, response: dict[str, Any]) -> dict[str, Any]:
+    def _check_terminal(run_id: str, response: RunResponse) -> RunResponse:
         """Return the response if completed, raise if failed/cancelled."""
-        state = response["status"]
-        if state == "completed":
+        state = response.status
+        logger.info("Run %s reached terminal status: %s", run_id, state.value)
+        if state == RunStatus.completed:
             return response
-        if state == "cancelled":
+        if state == RunStatus.cancelled:
             raise RunCancelledError(run_id)
-        if state != "failed":
+        if state != RunStatus.failed:
             raise AssertionError(f"Unexpected terminal status: {state!r}")
-        raise RunFailedError(run_id, response.get("error_message"))
+        raise RunFailedError(run_id, response.error_message)
 
     # ------------------------------------------------------------ convenience
 
@@ -188,10 +217,10 @@ class AsyncRunsNamespace:
         timeout: float = 3600.0,
         webhook_url: str | None = None,
         webhook_metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> RunResponse:
         """Submit a run and poll until it reaches a terminal state.
 
-        Returns the final ``RunResponse`` dict on success. Raises
+        Returns the final :class:`RunResponse` on success. Raises
         ``RunFailedError`` if the run fails, ``RunCancelledError`` if
         cancelled, and ``TimeoutError`` if it does not complete within
         ``timeout`` seconds.
@@ -205,20 +234,21 @@ class AsyncRunsNamespace:
             webhook_url=webhook_url,
             webhook_metadata=webhook_metadata,
         )
-        run_id = created["run_id"]
+        run_id = created.run_id
         # Short-circuit if the server already resolved (e.g. instant validation
         # failure) — avoids a redundant GET.
-        if created.get("status") in _TERMINAL_STATUSES:
+        if created.status in _TERMINAL_STATUSES:
             full = await self.get(run_id)
-            if full["status"] in _TERMINAL_STATUSES:
+            if full.status in _TERMINAL_STATUSES:
                 return self._check_terminal(run_id, full)
             # create() said terminal but get() disagrees (eventual consistency)
             # — fall through to poll loop.
         deadline = time.monotonic() + timeout
         while True:
             status = await self.get(run_id)
-            if status["status"] in _TERMINAL_STATUSES:
+            if status.status in _TERMINAL_STATUSES:
                 return self._check_terminal(run_id, status)
+            logger.debug("Polling run %s (status=%s)", run_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")

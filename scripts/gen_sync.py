@@ -18,8 +18,6 @@ would clobber hand-written modules (``client.py``, ``tools.py``) that
 intentionally diverge from their async counterparts.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 
@@ -84,7 +82,7 @@ def main() -> None:
         # Class-level: replace the async usage example
         "async with AsyncProtoClient(...) as client:": ("with ProtoClient(...) as client:"),
         "run = await client.runs.create(program_data={...})": ("run = client.runs.create(program_data={...})"),
-        "status = await client.runs.get(run[": ("status = client.runs.get(run["),
+        "status = await client.runs.get(run.run_id)": ("status = client.runs.get(run.run_id)"),
         "Initialize with an httpx AsyncClient.": "Initialize with an httpx Client.",
     }
     for name in SYNC_TARGETS:

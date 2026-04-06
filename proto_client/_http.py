@@ -11,9 +11,8 @@ instead of computed backoff. Conservative defaults (``max_retries=2``) keep
 the SDK from amplifying 429 storms against the the tools API rate limiter.
 """
 
-from __future__ import annotations
-
 import asyncio
+import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
@@ -22,6 +21,8 @@ from dataclasses import dataclass
 import httpx
 
 from proto_client.errors import parse_retry_after
+
+logger = logging.getLogger("proto_client._http")
 
 RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 # NetworkError covers ConnectError/ReadError/WriteError/CloseError; TimeoutException
@@ -123,17 +124,40 @@ class RetryTransport(httpx.BaseTransport):
                 response = self._wrapped.handle_request(request)
             except RETRYABLE_EXCEPTIONS:
                 if attempt >= config.max_retries:
+                    logger.warning(
+                        "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
+                    )
                     raise
-                self._sleep(compute_backoff(attempt, config, rng=self._rng))
+                delay = compute_backoff(attempt, config, rng=self._rng)
+                logger.debug(
+                    "Retry attempt %d/%d for %s %s (delay=%.2fs)",
+                    attempt + 1,
+                    config.max_retries,
+                    request.method,
+                    request.url.path,
+                    delay,
+                )
+                self._sleep(delay)
                 attempt += 1
                 continue
 
             if response.status_code not in RETRYABLE_STATUS:
                 return response
             if attempt >= config.max_retries:
+                logger.warning(
+                    "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
+                )
                 return response
 
             delay = _delay_for_response(response, attempt, config, rng=self._rng)
+            logger.debug(
+                "Retry attempt %d/%d for %s %s (delay=%.2fs)",
+                attempt + 1,
+                config.max_retries,
+                request.method,
+                request.url.path,
+                delay,
+            )
             response.read()
             response.close()
             self._sleep(delay)
@@ -167,17 +191,40 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
                 response = await self._wrapped.handle_async_request(request)
             except RETRYABLE_EXCEPTIONS:
                 if attempt >= config.max_retries:
+                    logger.warning(
+                        "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
+                    )
                     raise
-                await self._sleep(compute_backoff(attempt, config, rng=self._rng))
+                delay = compute_backoff(attempt, config, rng=self._rng)
+                logger.debug(
+                    "Retry attempt %d/%d for %s %s (delay=%.2fs)",
+                    attempt + 1,
+                    config.max_retries,
+                    request.method,
+                    request.url.path,
+                    delay,
+                )
+                await self._sleep(delay)
                 attempt += 1
                 continue
 
             if response.status_code not in RETRYABLE_STATUS:
                 return response
             if attempt >= config.max_retries:
+                logger.warning(
+                    "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
+                )
                 return response
 
             delay = _delay_for_response(response, attempt, config, rng=self._rng)
+            logger.debug(
+                "Retry attempt %d/%d for %s %s (delay=%.2fs)",
+                attempt + 1,
+                config.max_retries,
+                request.method,
+                request.url.path,
+                delay,
+            )
             await response.aread()
             await response.aclose()
             await self._sleep(delay)

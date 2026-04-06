@@ -3,21 +3,14 @@
 All transport is stubbed via ``httpx.MockTransport``; no network.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import httpx
 import pytest
+from helpers import make_async_ns, run_response_json
 
-from proto_client._async.runs import AsyncRunsNamespace
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
-
-
-def make_ns(handler) -> AsyncRunsNamespace:
-    transport = httpx.MockTransport(handler)
-    http = httpx.AsyncClient(transport=transport, base_url="https://api.test")
-    return AsyncRunsNamespace(http)
+from proto_client.models import CreateRunResponse, RunResponse, StageTimepointHistory, ValidationResponse
 
 
 async def test_create_run_default_execute_true():
@@ -37,13 +30,14 @@ async def test_create_run_default_execute_true():
             },
         )
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     result = await ns.create(
         {"constructs": [{}], "optimization_stages": [{}]},
         webhook_url="https://hook.example/x",
         webhook_metadata={"user": "lucas"},
     )
-    assert result["run_id"] == "abc-123"
+    assert isinstance(result, CreateRunResponse)
+    assert result.run_id == "abc-123"
     assert captured["method"] == "POST"
     assert captured["path"] == "/runs"
     assert captured["query"] == {"execute": "true"}
@@ -60,7 +54,7 @@ async def test_create_run_execute_false():
         captured["body"] = request.content.decode()
         return httpx.Response(200, json={"run_id": "r", "status": "pending", "message": ""})
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     await ns.create({"constructs": [{}], "optimization_stages": [{}]}, execute=False)
     assert captured["query"] == {"execute": "false"}
     assert "webhook_url" not in captured["body"]
@@ -72,17 +66,17 @@ async def test_get_cancel_run_stage():
 
     def handler(request):
         if request.method == "GET" and request.url.path == "/runs/abc":
-            return httpx.Response(200, json={"id": "abc", "status": "running"})
+            return httpx.Response(200, json=run_response_json("abc", "running"))
         if request.method == "DELETE" and request.url.path == "/runs/xyz":
-            return httpx.Response(200, json={"message": "cancelled", "status": "cancelled"})
+            return httpx.Response(200, json=run_response_json("xyz", "cancelled"))
         if request.method == "POST" and request.url.path == "/runs/abc/stages/2/start":
-            return httpx.Response(200, json={"stage_index": 2, "run_id": "abc"})
+            return httpx.Response(200, json=run_response_json("abc", "running", current_stage=2))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
-    ns = make_ns(handler)
-    assert (await ns.get("abc"))["status"] == "running"
-    assert (await ns.cancel("xyz"))["status"] == "cancelled"
-    assert (await ns.run_stage("abc", 2))["stage_index"] == 2
+    ns = make_async_ns(handler)
+    assert (await ns.get("abc")).status.value == "running"
+    assert (await ns.cancel("xyz")).status.value == "cancelled"
+    assert (await ns.run_stage("abc", 2)).current_stage == 2
 
 
 async def test_cancel_completed_run_propagates_400():
@@ -91,7 +85,7 @@ async def test_cancel_completed_run_propagates_400():
     def handler(request):
         return httpx.Response(400, json={"detail": "Cannot cancel run with status: completed"})
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     with pytest.raises(ProtoAPIError) as exc_info:
         await ns.cancel("done")
     assert exc_info.value.status_code == 400
@@ -103,8 +97,10 @@ async def test_validate_ok():
         assert request.url.path == "/validate"
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
-    ns = make_ns(handler)
-    assert (await ns.validate({"constructs": [], "optimization_stages": []}))["valid"] is True
+    ns = make_async_ns(handler)
+    result = await ns.validate({"constructs": [], "optimization_stages": []})
+    assert isinstance(result, ValidationResponse)
+    assert result.valid is True
 
 
 async def test_validate_errors_propagate_422():
@@ -114,7 +110,7 @@ async def test_validate_errors_propagate_422():
             json={"detail": {"errors": ["Missing field: constructs"]}},
         )
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     with pytest.raises(ProtoValidationError) as exc_info:
         await ns.validate({})
     assert exc_info.value.status_code == 422
@@ -128,11 +124,13 @@ async def test_get_timepoints_all_stages():
         captured["query"] = dict(request.url.params)
         return httpx.Response(200, json=[{"optimizer_stage_idx": 0, "timepoints": []}])
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     result = await ns.get_timepoints("abc", offset=5, limit=100)
     assert captured["path"] == "/runs/abc/timepoints"
     assert captured["query"] == {"limit": "100", "offset": "5"}
     assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], StageTimepointHistory)
 
 
 async def test_get_timepoints_single_stage_with_filter():
@@ -143,14 +141,14 @@ async def test_get_timepoints_single_stage_with_filter():
         captured["query"] = dict(request.url.params)
         return httpx.Response(200, json=[{"optimizer_stage_idx": 1, "timepoints": []}])
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     await ns.get_timepoints("abc", stage=1, timepoint=5, limit=10)
     assert captured["path"] == "/runs/abc/stages/1/timepoints"
     assert captured["query"] == {"limit": "10", "timepoint": "5"}
 
 
 async def test_get_timepoints_rejects_filter_without_stage():
-    ns = make_ns(lambda r: httpx.Response(200, json=[]))
+    ns = make_async_ns(lambda r: httpx.Response(200, json=[]))
     with pytest.raises(ValueError, match="timepoint filter"):
         await ns.get_timepoints("abc", timepoint=5)
 
@@ -160,13 +158,62 @@ async def test_list_constraints_generators_optimizers():
 
     def handler(request):
         paths.append(request.url.path)
-        return httpx.Response(200, json=[{"name": "dummy"}])
+        if request.url.path == "/constraints":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy constraint",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "tools_called": [],
+                        "category": None,
+                        "supported_sequence_types": ["protein"],
+                    }
+                ],
+            )
+        if request.url.path == "/generators":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy generator",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "category": "default",
+                        "tools_called": [],
+                        "supported_sequence_types": ["protein"],
+                    }
+                ],
+            )
+        if request.url.path == "/optimizers":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy optimizer",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "targets_single_segment": False,
+                    }
+                ],
+            )
+        raise AssertionError(f"unexpected path: {request.url.path}")
 
-    ns = make_ns(handler)
-    await ns.list_constraints()
-    await ns.list_generators()
-    await ns.list_optimizers()
+    ns = make_async_ns(handler)
+    constraints = await ns.list_constraints()
+    generators = await ns.list_generators()
+    optimizers = await ns.list_optimizers()
     assert paths == ["/constraints", "/generators", "/optimizers"]
+    assert constraints[0].key == "dummy"
+    assert generators[0].key == "dummy"
+    assert optimizers[0].key == "dummy"
 
 
 async def test_run_polls_until_completed(monkeypatch):
@@ -186,20 +233,18 @@ async def test_run_polls_until_completed(monkeypatch):
         if request.method == "GET" and request.url.path == "/runs/r1":
             call_count["get"] += 1
             if call_count["get"] < 3:
-                return httpx.Response(200, json={"id": "r1", "status": "running"})
-            return httpx.Response(
-                200,
-                json={"id": "r1", "status": "completed", "stage_results": []},
-            )
+                return httpx.Response(200, json=run_response_json("r1", "running"))
+            return httpx.Response(200, json=run_response_json("r1", "completed"))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     final = await ns.run(
         {"constructs": [{}], "optimization_stages": [{}]},
         poll_interval=0.01,
         timeout=5.0,
     )
-    assert final["status"] == "completed"
+    assert isinstance(final, RunResponse)
+    assert final.status.value == "completed"
     assert call_count["get"] == 3
 
 
@@ -222,17 +267,17 @@ async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_er
             get_calls["n"] += 1
             return httpx.Response(
                 200,
-                json={"id": "r1", "status": terminal_status, "error_message": "bad program", "stage_results": []},
+                json=run_response_json("r1", terminal_status, error_message="bad program"),
             )
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     if expect_error is not None:
         with pytest.raises(expect_error):
             await ns.run({"constructs": [{}], "optimization_stages": [{}]})
     else:
         result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
-        assert result["status"] == "completed"
+        assert result.status.value == "completed"
     assert get_calls["n"] == 1
 
 
@@ -257,9 +302,9 @@ async def test_run_times_out(monkeypatch):
     def handler(request):
         if request.method == "POST":
             return httpx.Response(200, json={"run_id": "r1", "status": "running", "message": ""})
-        return httpx.Response(200, json={"id": "r1", "status": "running"})
+        return httpx.Response(200, json=run_response_json("r1", "running"))
 
-    ns = make_ns(handler)
+    ns = make_async_ns(handler)
     with pytest.raises(TimeoutError):
         await ns.run(
             {"constructs": [{}], "optimization_stages": [{}]},

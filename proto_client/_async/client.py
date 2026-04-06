@@ -1,15 +1,16 @@
-"""AsyncProtoClient — async entrypoint mirroring the sync ``ProtoClient``."""
-
-from __future__ import annotations
+"""AsyncProtoClient -- async entrypoint mirroring the sync ``ProtoClient``."""
 
 import asyncio
 import os
+import platform
 from typing import Any
 
 import httpx
 
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
+from proto_client._http import AsyncRetryTransport, RetryConfig
+from proto_client._version import VERSION
 
 
 class AsyncProtoClient:
@@ -25,27 +26,46 @@ class AsyncProtoClient:
     def __init__(
         self,
         api_key: str | None = None,
-        tools_base_url: str = "https://proto-tools.evodesign.org",
-        runs_base_url: str = "https://proto-language.evodesign.org",
+        tools_base_url: str | None = None,
+        runs_base_url: str | None = None,
         timeout: float = 600.0,
-    ):
+        max_retries: int = 2,
+        retry_config: RetryConfig | None = None,
+    ) -> None:
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
-        headers: dict[str, str] = {}
+
+        resolved_tools_url = (
+            tools_base_url
+            if tools_base_url is not None
+            else (os.environ.get("PROTO_TOOLS_BASE_URL") or "https://proto-tools.evodesign.org")
+        )
+        resolved_runs_url = (
+            runs_base_url
+            if runs_base_url is not None
+            else (os.environ.get("PROTO_RUNS_BASE_URL") or "https://proto-language.evodesign.org")
+        )
+
+        headers: dict[str, str] = {
+            "User-Agent": f"proto-client-python/{VERSION} python/{platform.python_version()}",
+        }
         if resolved_key:
             headers["X-API-Key"] = resolved_key
 
-        
+        cfg = retry_config or RetryConfig(max_retries=max_retries)
+
         tools_http = httpx.AsyncClient(
-            base_url=tools_base_url,
+            base_url=resolved_tools_url,
             headers=headers,
             timeout=timeout,
+            transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
         runs_http = httpx.AsyncClient(
-            base_url=runs_base_url,
+            base_url=resolved_runs_url,
             headers=headers,
             timeout=timeout,
+            transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
 
         self.tools = AsyncToolsNamespace(tools_http)
@@ -61,7 +81,7 @@ class AsyncProtoClient:
             if isinstance(r, BaseException):
                 raise r
 
-    async def __aenter__(self) -> AsyncProtoClient:
+    async def __aenter__(self) -> "AsyncProtoClient":
         return self
 
     async def __aexit__(self, *args: Any) -> None:
