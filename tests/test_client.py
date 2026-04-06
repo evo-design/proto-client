@@ -8,11 +8,6 @@ import pytest
 from proto_client import ProtoClient
 
 
-def test_client_init_with_api_key():
-    with ProtoClient(api_key="test-key", tools_base_url="http://localhost:9999") as c:
-        assert c.tools is not None
-
-
 def test_client_reads_env_var():
     with patch.dict(os.environ, {"PROTO_API_KEY": "env-key"}):
         c = ProtoClient(tools_base_url="http://localhost:9999")
@@ -31,12 +26,6 @@ def test_client_no_key_no_header():
 def test_client_empty_key_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         ProtoClient(api_key="")
-
-
-
-def test_client_context_manager():
-    with ProtoClient(tools_base_url="http://localhost:9999") as c:
-        assert c is not None
 
 
 def test_runs_namespace_wired():

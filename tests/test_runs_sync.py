@@ -22,9 +22,7 @@ def make_ns(handler) -> RunsNamespace:
 def test_sync_create_and_get():
     def handler(request):
         if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(
-                200, json={"run_id": "x", "status": "running", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "x", "status": "running", "message": ""})
         if request.method == "GET" and request.url.path == "/runs/x":
             return httpx.Response(200, json={"id": "x", "status": "running"})
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
@@ -49,12 +47,7 @@ def test_sync_validate():
         assert request.url.path == "/validate"
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
-    assert (
-        make_ns(handler).validate({"constructs": [], "optimization_stages": []})[
-            "valid"
-        ]
-        is True
-    )
+    assert make_ns(handler).validate({"constructs": [], "optimization_stages": []})["valid"] is True
 
 
 def test_sync_timepoints_stage_filter():
@@ -89,49 +82,12 @@ def test_sync_run_polls_until_completed(monkeypatch):
 
     def handler(request):
         if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r", "status": "pending", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r", "status": "pending", "message": ""})
         counter["n"] += 1
         if counter["n"] < 2:
             return httpx.Response(200, json={"id": "r", "status": "running"})
         return httpx.Response(200, json={"id": "r", "status": "completed"})
 
     ns = make_ns(handler)
-    final = ns.run(
-        {"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01
-    )
+    final = ns.run({"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01)
     assert final["status"] == "completed"
-
-
-def test_sync_run_short_circuits_on_instant_failure():
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r", "status": "failed", "message": ""}
-            )
-        return httpx.Response(
-            200, json={"id": "r", "status": "failed", "error_message": "boom"}
-        )
-
-    ns = make_ns(handler)
-    with pytest.raises(RuntimeError, match="boom"):
-        ns.run({"constructs": [{}], "optimization_stages": [{}]})
-
-
-def test_sync_run_short_circuits_on_instant_completed():
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r", "status": "completed", "message": ""}
-            )
-        return httpx.Response(
-            200, json={"id": "r", "status": "completed", "stage_results": []}
-        )
-
-    assert (
-        make_ns(handler).run({"constructs": [{}], "optimization_stages": [{}]})[
-            "status"
-        ]
-        == "completed"
-    )

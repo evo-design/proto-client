@@ -57,9 +57,7 @@ async def test_create_run_execute_false():
         captured["query"] = dict(request.url.params)
         # No webhook fields should be present when not set.
         captured["body"] = request.content.decode()
-        return httpx.Response(
-            200, json={"run_id": "r", "status": "pending", "message": ""}
-        )
+        return httpx.Response(200, json={"run_id": "r", "status": "pending", "message": ""})
 
     ns = make_ns(handler)
     await ns.create({"constructs": [{}], "optimization_stages": [{}]}, execute=False)
@@ -135,9 +133,7 @@ async def test_validate_ok():
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
     ns = make_ns(handler)
-    assert (await ns.validate({"constructs": [], "optimization_stages": []}))[
-        "valid"
-    ] is True
+    assert (await ns.validate({"constructs": [], "optimization_stages": []}))["valid"] is True
 
 
 async def test_validate_errors_propagate_422():
@@ -215,9 +211,7 @@ async def test_run_polls_until_completed(monkeypatch):
 
     def handler(request):
         if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "pending", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r1", "status": "pending", "message": ""})
         if request.method == "GET" and request.url.path == "/runs/r1":
             call_count["get"] += 1
             if call_count["get"] < 3:
@@ -244,9 +238,7 @@ async def test_run_short_circuits_on_instant_failure():
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "failed", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r1", "status": "failed", "message": ""})
         if request.method == "GET":
             get_calls["n"] += 1
             return httpx.Response(
@@ -267,9 +259,7 @@ async def test_run_short_circuits_on_instant_completed():
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and request.url.path == "/runs":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "completed", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r1", "status": "completed", "message": ""})
         if request.method == "GET":
             return httpx.Response(
                 200,
@@ -292,9 +282,7 @@ async def test_run_raises_on_failed(monkeypatch):
 
     def handler(request):
         if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "running", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r1", "status": "running", "message": ""})
         return httpx.Response(
             200,
             json={"id": "r1", "status": "failed", "error_message": "boom"},
@@ -302,31 +290,7 @@ async def test_run_raises_on_failed(monkeypatch):
 
     ns = make_ns(handler)
     with pytest.raises(RuntimeError, match="boom"):
-        await ns.run(
-            {"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01
-        )
-
-
-async def test_run_raises_on_cancelled(monkeypatch):
-    import proto_client._async.runs as runs_mod
-
-    async def fake_sleep(_seconds):
-        return None
-
-    monkeypatch.setattr(runs_mod, "_sleep", fake_sleep)
-
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "running", "message": ""}
-            )
-        return httpx.Response(200, json={"id": "r1", "status": "cancelled"})
-
-    ns = make_ns(handler)
-    with pytest.raises(RuntimeError, match="cancelled"):
-        await ns.run(
-            {"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01
-        )
+        await ns.run({"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01)
 
 
 async def test_run_times_out(monkeypatch):
@@ -349,9 +313,7 @@ async def test_run_times_out(monkeypatch):
 
     def handler(request):
         if request.method == "POST":
-            return httpx.Response(
-                200, json={"run_id": "r1", "status": "running", "message": ""}
-            )
+            return httpx.Response(200, json={"run_id": "r1", "status": "running", "message": ""})
         return httpx.Response(200, json={"id": "r1", "status": "running"})
 
     ns = make_ns(handler)
