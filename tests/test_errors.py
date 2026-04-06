@@ -1,7 +1,5 @@
 """Status-code → error class mapping and field extraction."""
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 

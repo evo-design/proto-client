@@ -5,8 +5,6 @@ tests exist to verify that the token-level transform actually produced a
 working sync module — catching unasync breakage the moment it happens.
 """
 
-from __future__ import annotations
-
 import httpx
 import pytest
 from helpers import make_sync_ns

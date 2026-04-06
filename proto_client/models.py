@@ -11,8 +11,6 @@ to :meth:`proto_client.tools.ToolsNamespace.run` to opt into a typed
 ``.result`` per-call.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from typing import Any

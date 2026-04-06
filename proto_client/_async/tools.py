@@ -4,8 +4,6 @@ Method signatures mirror sync ``ToolsNamespace`` in ``proto_client/tools.py``.
 All methods raise ``NotImplementedError`` until the async implementation lands.
 """
 
-from __future__ import annotations
-
 from typing import Any, TypeVar
 
 import httpx

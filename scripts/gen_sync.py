@@ -18,8 +18,6 @@ would clobber hand-written modules (``client.py``, ``tools.py``) that
 intentionally diverge from their async counterparts.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

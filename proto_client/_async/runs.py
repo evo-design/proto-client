@@ -5,8 +5,6 @@ This module is the source of truth. The sync counterpart
 ``scripts/gen_sync.py``. Do not edit the generated sync file by hand.
 """
 
-from __future__ import annotations
-
 import time
 from asyncio import sleep as _sleep
 from typing import Any, cast

@@ -1,7 +1,5 @@
 """AsyncProtoClient — async entrypoint mirroring the sync ``ProtoClient``."""
 
-from __future__ import annotations
-
 import asyncio
 import os
 from typing import Any
@@ -61,7 +59,7 @@ class AsyncProtoClient:
             if isinstance(r, BaseException):
                 raise r
 
-    async def __aenter__(self) -> AsyncProtoClient:
+    async def __aenter__(self) -> "AsyncProtoClient":
         return self
 
     async def __aexit__(self, *args: Any) -> None:

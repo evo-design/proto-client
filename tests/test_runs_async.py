@@ -3,8 +3,6 @@
 All transport is stubbed via ``httpx.MockTransport``; no network.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import httpx

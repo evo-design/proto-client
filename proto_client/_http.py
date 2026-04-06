@@ -11,8 +11,6 @@ instead of computed backoff. Conservative defaults (``max_retries=2``) keep
 the SDK from amplifying 429 storms against the the tools API rate limiter.
 """
 
-from __future__ import annotations
-
 import asyncio
 import random
 import time

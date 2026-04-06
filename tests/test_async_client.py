@@ -1,7 +1,5 @@
 """Tests for AsyncProtoClient initialization and lifecycle."""
 
-from __future__ import annotations
-
 import os
 from unittest.mock import patch
 
