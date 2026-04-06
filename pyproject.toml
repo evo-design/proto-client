@@ -107,6 +107,9 @@ ban-relative-imports = "all"
 [tool.ruff.format]
 docstring-code-format = true
 
+[tool.coverage.run]
+omit = ["proto_client/_async/*"]
+
 [tool.mypy]
 python_version = "3.10"
 strict = true
