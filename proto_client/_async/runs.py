@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import httpx
 
-from proto_client.errors import from_response
+from proto_client.errors import RunCancelledError, RunFailedError, from_response
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -173,7 +173,11 @@ class AsyncRunsNamespace:
         state = response["status"]
         if state == "completed":
             return response
-        raise RuntimeError(f"Run {run_id} ended with status={state!r}: {response.get('error_message')}")
+        if state == "cancelled":
+            raise RunCancelledError(run_id)
+        if state != "failed":
+            raise AssertionError(f"Unexpected terminal status: {state!r}")
+        raise RunFailedError(run_id, response.get("error_message"))
 
     # ------------------------------------------------------------ convenience
 
@@ -188,10 +192,12 @@ class AsyncRunsNamespace:
         """Submit a run and poll until it reaches a terminal state.
 
         Returns the final ``RunResponse`` dict on success. Raises
-        ``RuntimeError`` if the run ends in ``failed`` or ``cancelled`` and
-        ``TimeoutError`` if it does not reach a terminal state within
-        ``timeout`` seconds. The polling cadence is naive sleep — v0 streaming
-        via SSE is the job of issue #6.
+        ``RunFailedError`` if the run fails, ``RunCancelledError`` if
+        cancelled, and ``TimeoutError`` if it does not complete within
+        ``timeout`` seconds.
+
+        On timeout the server-side run is **not** cancelled — callers can
+        poll later with the ``run_id`` or cancel explicitly.
         """
         created = await self.create(
             program_data,

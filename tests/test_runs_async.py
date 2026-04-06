@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from proto_client._async.runs import AsyncRunsNamespace
-from proto_client.errors import ProtoAPIError, ProtoValidationError
+from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
 
 
 def make_ns(handler) -> AsyncRunsNamespace:
@@ -205,7 +205,11 @@ async def test_run_polls_until_completed(monkeypatch):
 
 @pytest.mark.parametrize(
     "terminal_status,expect_error",
-    [("completed", False), ("failed", True)],
+    [
+        ("completed", None),
+        ("failed", RunFailedError),
+        ("cancelled", RunCancelledError),
+    ],
 )
 async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_error):
     """When create() returns a terminal status the poll loop is skipped."""
@@ -223,8 +227,8 @@ async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_er
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_ns(handler)
-    if expect_error:
-        with pytest.raises(RuntimeError, match="bad program"):
+    if expect_error is not None:
+        with pytest.raises(expect_error):
             await ns.run({"constructs": [{}], "optimization_stages": [{}]})
     else:
         result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
