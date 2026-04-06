@@ -1,5 +1,6 @@
 """Tools namespace — wraps the tools API endpoints."""
 
+import logging
 import time
 from typing import Any, TypeVar
 
@@ -14,6 +15,8 @@ from proto_client.models import (
     ToolInfo,
     ToolSchema,
 )
+
+logger = logging.getLogger("proto_client.tools")
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -37,14 +40,19 @@ class ToolsNamespace:
 
     def list(self) -> list[ToolInfo]:
         """List available tools."""
+        logger.debug("GET /api/v1/tools")
         resp = self._http.get("/api/v1/tools")
+        logger.debug("GET /api/v1/tools -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return [ToolInfo.model_validate(item) for item in resp.json()]
 
     def get_schema(self, tool_key: str) -> ToolSchema:
         """Get JSON schemas for a tool's input, config, and output models."""
-        resp = self._http.get(f"/api/v1/tools/{tool_key}/schema")
+        path = f"/api/v1/tools/{tool_key}/schema"
+        logger.debug("GET %s", path)
+        resp = self._http.get(path)
+        logger.debug("GET %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return ToolSchema.model_validate(resp.json())
@@ -56,10 +64,10 @@ class ToolsNamespace:
         config: dict[str, Any] | None = None,
     ) -> str:
         """Submit a job. Returns job_id."""
-        resp = self._http.post(
-            f"/api/v1/tools/{tool_key}/run",
-            json={"inputs": inputs, "config": config or {}},
-        )
+        path = f"/api/v1/tools/{tool_key}/run"
+        logger.debug("POST %s", path)
+        resp = self._http.post(path, json={"inputs": inputs, "config": config or {}})
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return JobResponse.model_validate(resp.json()).job_id
@@ -71,24 +79,30 @@ class ToolsNamespace:
         config: dict[str, Any] | None = None,
     ) -> str:
         """Submit a batch job. Returns job_id."""
-        resp = self._http.post(
-            f"/api/v1/tools/{tool_key}/run-batch",
-            json={"inputs_list": inputs_list, "config": config or {}},
-        )
+        path = f"/api/v1/tools/{tool_key}/run-batch"
+        logger.debug("POST %s", path)
+        resp = self._http.post(path, json={"inputs_list": inputs_list, "config": config or {}})
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return JobResponse.model_validate(resp.json()).job_id
 
     def get(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Get job status."""
-        resp = self._http.get(f"/api/v1/tools/{tool_key}/jobs/{job_id}")
+        path = f"/api/v1/tools/{tool_key}/jobs/{job_id}"
+        logger.debug("GET %s", path)
+        resp = self._http.get(path)
+        logger.debug("GET %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return JobStatusResponse.model_validate(resp.json())
 
     def cancel(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Cancel a job."""
-        resp = self._http.post(f"/api/v1/tools/{tool_key}/jobs/{job_id}/cancel")
+        path = f"/api/v1/tools/{tool_key}/jobs/{job_id}/cancel"
+        logger.debug("POST %s", path)
+        resp = self._http.post(path)
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return JobStatusResponse.model_validate(resp.json())
@@ -145,6 +159,7 @@ class ToolsNamespace:
         while True:
             status = self.get(tool_key, job_id)
             if status.status is JobStatus.completed:
+                logger.info("Job %s reached terminal status: %s", job_id, status.status.value)
                 if output_model is not None:
                     if not isinstance(status.result, dict):
                         raise TypeError(
@@ -160,9 +175,12 @@ class ToolsNamespace:
                     status = status.model_copy(update={"result": parsed})
                 return status
             if status.status is JobStatus.failed:
+                logger.info("Job %s reached terminal status: %s", job_id, status.status.value)
                 raise RuntimeError(f"Job {job_id} failed: {status.error}")
             if status.status is JobStatus.cancelled:
+                logger.info("Job %s reached terminal status: %s", job_id, status.status.value)
                 raise RuntimeError(f"Job {job_id} was cancelled")
+            logger.debug("Polling job %s (status=%s)", job_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")

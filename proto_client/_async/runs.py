@@ -5,6 +5,7 @@ This module is the source of truth. The sync counterpart
 ``scripts/gen_sync.py``. Do not edit the generated sync file by hand.
 """
 
+import logging
 import time
 from asyncio import sleep as _sleep
 from typing import Any
@@ -22,6 +23,8 @@ from proto_client.models import (
     StageTimepointHistory,
     ValidationResponse,
 )
+
+logger = logging.getLogger("proto_client.runs")
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({RunStatus.completed, RunStatus.failed, RunStatus.cancelled})
@@ -61,14 +64,19 @@ class AsyncRunsNamespace:
             body["webhook_url"] = webhook_url
         if webhook_metadata is not None:
             body["webhook_metadata"] = webhook_metadata
+        logger.debug("POST /runs")
         resp = await self._http.post("/runs", params={"execute": str(execute).lower()}, json=body)
+        logger.debug("POST /runs -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return CreateRunResponse.model_validate(resp.json())
 
     async def get(self, run_id: str) -> RunResponse:
         """GET /runs/{run_id} — fetch run status and stage results."""
-        resp = await self._http.get(f"/runs/{run_id}")
+        path = f"/runs/{run_id}"
+        logger.debug("GET %s", path)
+        resp = await self._http.get(path)
+        logger.debug("GET %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
@@ -80,7 +88,10 @@ class AsyncRunsNamespace:
         failed terminal state; callers need to know that cancelling a finished
         run is a no-op, not silently swallowed.
         """
-        resp = await self._http.delete(f"/runs/{run_id}")
+        path = f"/runs/{run_id}"
+        logger.debug("DELETE %s", path)
+        resp = await self._http.delete(path)
+        logger.debug("DELETE %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
@@ -92,7 +103,10 @@ class AsyncRunsNamespace:
         and for re-running a failed stage — the latter is a common beta-user
         recovery path.
         """
-        resp = await self._http.post(f"/runs/{run_id}/stages/{stage_index}/start")
+        path = f"/runs/{run_id}/stages/{stage_index}/start"
+        logger.debug("POST %s", path)
+        resp = await self._http.post(path)
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
@@ -108,7 +122,9 @@ class AsyncRunsNamespace:
         Raises ``ProtoValidationError`` (422) when the program is invalid;
         the response body carries a structured ``{"errors": [...]}`` detail.
         """
+        logger.debug("POST /validate")
         resp = await self._http.post("/validate", json={"program_data": program_data})
+        logger.debug("POST /validate -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return ValidationResponse.model_validate(resp.json())
@@ -143,7 +159,9 @@ class AsyncRunsNamespace:
             if timepoint is not None:
                 params["timepoint"] = timepoint
             url = f"/runs/{run_id}/stages/{stage}/timepoints"
+        logger.debug("GET %s", url)
         resp = await self._http.get(url, params=params)
+        logger.debug("GET %s -> %d", url, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return [StageTimepointHistory.model_validate(item) for item in resp.json()]
@@ -152,21 +170,27 @@ class AsyncRunsNamespace:
 
     async def list_constraints(self) -> list[ConstraintSpec]:
         """GET /constraints — list registered constraints with their params."""
+        logger.debug("GET /constraints")
         resp = await self._http.get("/constraints")
+        logger.debug("GET /constraints -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return [ConstraintSpec.model_validate(item) for item in resp.json()]
 
     async def list_generators(self) -> list[GeneratorSpec]:
         """GET /generators — list registered generators with their params."""
+        logger.debug("GET /generators")
         resp = await self._http.get("/generators")
+        logger.debug("GET /generators -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return [GeneratorSpec.model_validate(item) for item in resp.json()]
 
     async def list_optimizers(self) -> list[OptimizerSpec]:
         """GET /optimizers — list registered optimizers with their params."""
+        logger.debug("GET /optimizers")
         resp = await self._http.get("/optimizers")
+        logger.debug("GET /optimizers -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return [OptimizerSpec.model_validate(item) for item in resp.json()]
@@ -175,6 +199,7 @@ class AsyncRunsNamespace:
     def _check_terminal(run_id: str, response: RunResponse) -> RunResponse:
         """Return the response if completed, raise if failed/cancelled."""
         state = response.status
+        logger.info("Run %s reached terminal status: %s", run_id, state.value)
         if state == RunStatus.completed:
             return response
         if state == RunStatus.cancelled:
@@ -223,6 +248,7 @@ class AsyncRunsNamespace:
             status = await self.get(run_id)
             if status.status in _TERMINAL_STATUSES:
                 return self._check_terminal(run_id, status)
+            logger.debug("Polling run %s (status=%s)", run_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
