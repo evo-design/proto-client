@@ -55,3 +55,26 @@ jobs:
     - name: Install dependencies
       run: uv pip install --system -e ".[dev]"
     - run: pytest -q
+
+  unasync:
+    if: github.event.pull_request.draft == false
+    name: Verify Generated Sync Modules
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: "**/pyproject.toml"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: uv pip install --system -e ".[dev]"
+    - name: Regenerate and check for drift
+      run: |
+        python scripts/gen_sync.py
+        git diff --exit-code proto_client/runs.py || {
+          echo "::error::proto_client/runs.py is out of sync with _async/runs.py. Run 'python scripts/gen_sync.py' and commit."
+          exit 1
+        }

@@ -22,6 +22,7 @@ class ProtoClient:
         self,
         api_key: str | None = None,
         tools_base_url: str = "https://proto-tools.evodesign.org",
+        runs_base_url: str = "https://proto-language.evodesign.org",
         timeout: float = 600.0,
     ) -> None:
         """Initialize the client.
@@ -29,6 +30,7 @@ class ProtoClient:
         Args:
             api_key: API key for authentication. Falls back to PROTO_API_KEY env var.
             tools_base_url: Base URL for the the tools API.
+            runs_base_url: Base URL for the the runs API.
             timeout: Default request timeout in seconds.
         """
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
@@ -43,16 +45,28 @@ class ProtoClient:
             headers=headers,
             timeout=timeout,
         )
+        runs_http = httpx.Client(
+            base_url=runs_base_url,
+            headers=headers,
+            timeout=timeout,
+        )
 
         self.tools = ToolsNamespace(tools_http)
-        self.runs = RunsNamespace()
-        self._clients = [tools_http]
+        self.runs = RunsNamespace(runs_http)
+        self._clients: list[httpx.Client] = [tools_http, runs_http]
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""
+        first_error: BaseException | None = None
         for c in self._clients:
-            c.close()
+            try:
+                c.close()
+            except Exception as e:  # noqa: PERF203
+                if first_error is None:
+                    first_error = e
         self._clients.clear()
+        if first_error is not None:
+            raise first_error
 
     def __enter__(self) -> "ProtoClient":
         return self
