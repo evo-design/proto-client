@@ -258,11 +258,15 @@ class ToolsNamespace:
                                 error=f"Unexpected status: {item_status}",
                             )
                         )
+                logger.info("Batch job %s completed with %d items", job_id, len(items))
                 return BatchResult(items=items)
             if status.status is JobStatus.failed:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
                 raise RuntimeError(f"Batch job {job_id} failed: {status.error}")
             if status.status is JobStatus.cancelled:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
                 raise RuntimeError(f"Batch job {job_id} was cancelled")
+            logger.debug("Polling batch job %s (status=%s)", job_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Batch job {job_id} did not complete within {timeout}s")
