@@ -73,7 +73,7 @@ class JobResponse(BaseModel):
 
 
 class JobStatusResponse(BaseModel):
-    """Full job envelope returned by poll/cancel/sync-run endpoints.
+    """Full job envelope returned by get/cancel/sync-run endpoints.
 
     ``result`` wire type is ``dict[str, Any] | None``. When the caller passes
     ``output_model=MyModel`` to :meth:`ToolsNamespace.run` (or ``run_batch``),

@@ -81,7 +81,7 @@ class ToolsNamespace:
             raise from_response(resp)
         return JobResponse.model_validate(resp.json()).job_id
 
-    def poll(self, tool_key: str, job_id: str) -> JobStatusResponse:
+    def get(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Get job status."""
         resp = self._http.get(f"/api/v1/tools/{tool_key}/jobs/{job_id}")
         if resp.is_error:
@@ -145,7 +145,7 @@ class ToolsNamespace:
         """Poll until terminal status."""
         deadline = time.monotonic() + timeout
         while True:
-            status = self.poll(tool_key, job_id)
+            status = self.get(tool_key, job_id)
             if status.status is JobStatus.completed:
                 if output_model is not None:
                     if not isinstance(status.result, dict):
