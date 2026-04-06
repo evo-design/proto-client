@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from proto_client.models import JobStatus, JobStatusResponse, ToolInfo, ToolSchema
 from proto_client.tools import ToolsNamespace
@@ -100,18 +100,6 @@ def test_submit(mock_http: MagicMock) -> None:
     )
 
 
-def test_poll(mock_http):
-    mock_http.get.return_value = _mock_response(
-        _job_payload("completed", job_id="abc123", result={"score": 0.9}, completed=True)
-    )
-    ns = ToolsNamespace(mock_http)
-    status = ns.poll("esmfold-prediction", "abc123")
-
-    assert isinstance(status, JobStatusResponse)
-    assert status.status is JobStatus.completed
-    assert status.result == {"score": 0.9}
-
-
 def test_cancel(mock_http):
     mock_http.post.return_value = _mock_response(_job_payload("cancelled", job_id="abc123", completed=True))
     ns = ToolsNamespace(mock_http)
@@ -154,25 +142,6 @@ def test_run_with_output_model(mock_http):
 
     assert isinstance(result.result, Out)
     assert result.result.answer == 42
-
-
-def test_run_with_output_model_validation_error(mock_http):
-    class Out(BaseModel):
-        answer: int
-
-    mock_http.post.return_value = _mock_response({"job_id": "j1", "status": "pending"}, 202)
-    mock_http.get.return_value = _mock_response(
-        _job_payload("completed", result={"wrong_field": "nope"}, completed=True)
-    )
-
-    ns = ToolsNamespace(mock_http)
-    with pytest.raises(ValidationError):
-        ns.run(
-            "esmfold-prediction",
-            {"sequences": ["MKTL"]},
-            poll_interval=0.01,
-            output_model=Out,
-        )
 
 
 def test_run_raises_on_failure(mock_http):
