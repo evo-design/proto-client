@@ -7,6 +7,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
+from proto_client.errors import ProtoNotFoundError
 from proto_client.models import JobStatus, JobStatusResponse, ToolInfo, ToolSchema
 from proto_client.tools import ToolsNamespace
 
@@ -42,8 +43,10 @@ def mock_http() -> MagicMock:
 def _mock_response(data: Any, status_code: int = 200) -> MagicMock:
     resp = MagicMock()
     resp.status_code = status_code
+    resp.is_error = status_code >= 400
     resp.json.return_value = data
-    resp.raise_for_status = MagicMock()
+    resp.headers = {}
+    resp.read = MagicMock()
     return resp
 
 
@@ -226,12 +229,50 @@ def test_run_raises_on_cancelled(mock_http):
         ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01)
 
 
-def test_http_error_propagation(mock_http):
-    error_resp = _mock_response({}, 404)
-    error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
-        "Not Found", request=MagicMock(), response=MagicMock()
-    )
-    mock_http.get.return_value = error_resp
+def test_http_error_raises_typed_error(mock_http):
+    mock_http.get.return_value = _mock_response({"detail": "Not Found"}, 404)
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(ProtoNotFoundError):
         ns.list()
+
+
+def test_run_with_output_model_roundtrips_dump(mock_http):
+    class Out(BaseModel):
+        answer: int
+
+    mock_http.post.return_value = _mock_response({"job_id": "j1", "status": "pending"}, 202)
+    mock_http.get.return_value = _mock_response(_job_payload("completed", result={"answer": 42}, completed=True))
+    ns = ToolsNamespace(mock_http)
+    result = ns.run(
+        "esmfold-prediction",
+        {"sequences": ["MKTL"]},
+        poll_interval=0.01,
+        output_model=Out,
+    )
+    dumped = result.model_dump()
+    assert dumped["result"] == {"answer": 42}
+
+
+def test_run_batch_with_output_model(mock_http):
+    class Out(BaseModel):
+        hits: list[dict[str, str]]
+
+    mock_http.post.return_value = _mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = _mock_response(
+        _job_payload(
+            "completed",
+            job_id="b1",
+            result={"hits": [{"id": "prot1"}, {"id": "prot2"}]},
+            completed=True,
+        )
+    )
+    ns = ToolsNamespace(mock_http)
+    result = ns.run_batch(
+        "blast-search",
+        [{"query": "MKTL"}, {"query": "VDAL"}],
+        poll_interval=0.01,
+        output_model=Out,
+    )
+    assert isinstance(result.result, Out)
+    assert len(result.result.hits) == 2
+    assert result.result.hits[0]["id"] == "prot1"

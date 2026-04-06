@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel
 
+from proto_client.errors import from_response
 from proto_client.models import (
     JobResponse,
     JobStatus,
@@ -39,13 +40,15 @@ class ToolsNamespace:
     def list(self) -> list[ToolInfo]:
         """List available tools."""
         resp = self._http.get("/api/v1/tools")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return [ToolInfo.model_validate(item) for item in resp.json()]
 
     def get_schema(self, tool_key: str) -> ToolSchema:
         """Get JSON schemas for a tool's input, config, and output models."""
         resp = self._http.get(f"/api/v1/tools/{tool_key}/schema")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return ToolSchema.model_validate(resp.json())
 
     def submit(
@@ -59,7 +62,8 @@ class ToolsNamespace:
             f"/api/v1/tools/{tool_key}/run",
             json={"inputs": inputs, "config": config or {}},
         )
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return JobResponse.model_validate(resp.json()).job_id
 
     def submit_batch(
@@ -73,19 +77,22 @@ class ToolsNamespace:
             f"/api/v1/tools/{tool_key}/run-batch",
             json={"inputs_list": inputs_list, "config": config or {}},
         )
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return JobResponse.model_validate(resp.json()).job_id
 
     def poll(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Get job status."""
         resp = self._http.get(f"/api/v1/tools/{tool_key}/jobs/{job_id}")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return JobStatusResponse.model_validate(resp.json())
 
     def cancel(self, tool_key: str, job_id: str) -> JobStatusResponse:
         """Cancel a job."""
         resp = self._http.post(f"/api/v1/tools/{tool_key}/jobs/{job_id}/cancel")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return JobStatusResponse.model_validate(resp.json())
 
     def run(
