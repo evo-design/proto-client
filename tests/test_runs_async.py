@@ -7,9 +7,10 @@ from typing import Any
 
 import httpx
 import pytest
-from helpers import make_async_ns
+from helpers import make_async_ns, run_response_json
 
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
+from proto_client.models import CreateRunResponse, RunResponse, StageTimepointHistory, ValidationResponse
 
 
 async def test_create_run_default_execute_true():
@@ -35,7 +36,8 @@ async def test_create_run_default_execute_true():
         webhook_url="https://hook.example/x",
         webhook_metadata={"user": "lucas"},
     )
-    assert result["run_id"] == "abc-123"
+    assert isinstance(result, CreateRunResponse)
+    assert result.run_id == "abc-123"
     assert captured["method"] == "POST"
     assert captured["path"] == "/runs"
     assert captured["query"] == {"execute": "true"}
@@ -64,17 +66,17 @@ async def test_get_cancel_run_stage():
 
     def handler(request):
         if request.method == "GET" and request.url.path == "/runs/abc":
-            return httpx.Response(200, json={"id": "abc", "status": "running"})
+            return httpx.Response(200, json=run_response_json("abc", "running"))
         if request.method == "DELETE" and request.url.path == "/runs/xyz":
-            return httpx.Response(200, json={"message": "cancelled", "status": "cancelled"})
+            return httpx.Response(200, json=run_response_json("xyz", "cancelled"))
         if request.method == "POST" and request.url.path == "/runs/abc/stages/2/start":
-            return httpx.Response(200, json={"stage_index": 2, "run_id": "abc"})
+            return httpx.Response(200, json=run_response_json("abc", "running", current_stage=2))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_async_ns(handler)
-    assert (await ns.get("abc"))["status"] == "running"
-    assert (await ns.cancel("xyz"))["status"] == "cancelled"
-    assert (await ns.run_stage("abc", 2))["stage_index"] == 2
+    assert (await ns.get("abc")).status.value == "running"
+    assert (await ns.cancel("xyz")).status.value == "cancelled"
+    assert (await ns.run_stage("abc", 2)).current_stage == 2
 
 
 async def test_cancel_completed_run_propagates_400():
@@ -96,7 +98,9 @@ async def test_validate_ok():
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
     ns = make_async_ns(handler)
-    assert (await ns.validate({"constructs": [], "optimization_stages": []}))["valid"] is True
+    result = await ns.validate({"constructs": [], "optimization_stages": []})
+    assert isinstance(result, ValidationResponse)
+    assert result.valid is True
 
 
 async def test_validate_errors_propagate_422():
@@ -125,6 +129,8 @@ async def test_get_timepoints_all_stages():
     assert captured["path"] == "/runs/abc/timepoints"
     assert captured["query"] == {"limit": "100", "offset": "5"}
     assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], StageTimepointHistory)
 
 
 async def test_get_timepoints_single_stage_with_filter():
@@ -152,13 +158,62 @@ async def test_list_constraints_generators_optimizers():
 
     def handler(request):
         paths.append(request.url.path)
-        return httpx.Response(200, json=[{"name": "dummy"}])
+        if request.url.path == "/constraints":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy constraint",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "tools_called": [],
+                        "category": None,
+                        "supported_sequence_types": ["protein"],
+                    }
+                ],
+            )
+        if request.url.path == "/generators":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy generator",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "category": "default",
+                        "tools_called": [],
+                        "supported_sequence_types": ["protein"],
+                    }
+                ],
+            )
+        if request.url.path == "/optimizers":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "key": "dummy",
+                        "label": "Dummy",
+                        "description": "A dummy optimizer",
+                        "uses_gpu": False,
+                        "config_model": {},
+                        "targets_single_segment": False,
+                    }
+                ],
+            )
+        raise AssertionError(f"unexpected path: {request.url.path}")
 
     ns = make_async_ns(handler)
-    await ns.list_constraints()
-    await ns.list_generators()
-    await ns.list_optimizers()
+    constraints = await ns.list_constraints()
+    generators = await ns.list_generators()
+    optimizers = await ns.list_optimizers()
     assert paths == ["/constraints", "/generators", "/optimizers"]
+    assert constraints[0].key == "dummy"
+    assert generators[0].key == "dummy"
+    assert optimizers[0].key == "dummy"
 
 
 async def test_run_polls_until_completed(monkeypatch):
@@ -178,11 +233,8 @@ async def test_run_polls_until_completed(monkeypatch):
         if request.method == "GET" and request.url.path == "/runs/r1":
             call_count["get"] += 1
             if call_count["get"] < 3:
-                return httpx.Response(200, json={"id": "r1", "status": "running"})
-            return httpx.Response(
-                200,
-                json={"id": "r1", "status": "completed", "stage_results": []},
-            )
+                return httpx.Response(200, json=run_response_json("r1", "running"))
+            return httpx.Response(200, json=run_response_json("r1", "completed"))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_async_ns(handler)
@@ -191,7 +243,8 @@ async def test_run_polls_until_completed(monkeypatch):
         poll_interval=0.01,
         timeout=5.0,
     )
-    assert final["status"] == "completed"
+    assert isinstance(final, RunResponse)
+    assert final.status.value == "completed"
     assert call_count["get"] == 3
 
 
@@ -214,7 +267,7 @@ async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_er
             get_calls["n"] += 1
             return httpx.Response(
                 200,
-                json={"id": "r1", "status": terminal_status, "error_message": "bad program", "stage_results": []},
+                json=run_response_json("r1", terminal_status, error_message="bad program"),
             )
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
@@ -224,7 +277,7 @@ async def test_run_short_circuits_on_instant_terminal(terminal_status, expect_er
             await ns.run({"constructs": [{}], "optimization_stages": [{}]})
     else:
         result = await ns.run({"constructs": [{}], "optimization_stages": [{}]})
-        assert result["status"] == "completed"
+        assert result.status.value == "completed"
     assert get_calls["n"] == 1
 
 
@@ -249,7 +302,7 @@ async def test_run_times_out(monkeypatch):
     def handler(request):
         if request.method == "POST":
             return httpx.Response(200, json={"run_id": "r1", "status": "running", "message": ""})
-        return httpx.Response(200, json={"id": "r1", "status": "running"})
+        return httpx.Response(200, json=run_response_json("r1", "running"))
 
     ns = make_async_ns(handler)
     with pytest.raises(TimeoutError):
