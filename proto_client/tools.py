@@ -6,7 +6,7 @@ import time
 from typing import Any, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from proto_client.errors import from_response
 from proto_client.models import (
@@ -148,7 +148,13 @@ class ToolsNamespace:
             status = self.poll(tool_key, job_id)
             if status.status is JobStatus.completed:
                 if output_model is not None and isinstance(status.result, dict):
-                    status = status.model_copy(update={"result": output_model.model_validate(status.result)})
+                    try:
+                        parsed = output_model.model_validate(status.result)
+                    except ValidationError as exc:
+                        raise TypeError(
+                            f"Job {job_id} result does not conform to {output_model.__name__}: {exc}"
+                        ) from exc
+                    status = status.model_copy(update={"result": parsed})
                 return status
             if status.status is JobStatus.failed:
                 raise RuntimeError(f"Job {job_id} failed: {status.error}")

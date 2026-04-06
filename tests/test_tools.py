@@ -276,3 +276,16 @@ def test_run_batch_with_output_model(mock_http):
     assert isinstance(result.result, Out)
     assert len(result.result.hits) == 2
     assert result.result.hits[0]["id"] == "prot1"
+
+
+def test_run_output_model_validation_failure(mock_http):
+    class Strict(BaseModel):
+        count: int
+
+    mock_http.post.return_value = _mock_response({"job_id": "j1", "status": "pending"}, 202)
+    mock_http.get.return_value = _mock_response(
+        _job_payload("completed", result={"wrong_field": "oops"}, completed=True)
+    )
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="does not conform to Strict"):
+        ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01, output_model=Strict)
