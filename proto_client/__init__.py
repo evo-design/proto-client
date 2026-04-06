@@ -1,6 +1,7 @@
 """Proto Bio Python SDK."""
 
 from proto_client._async.client import AsyncProtoClient
+from proto_client._http import RetryConfig
 from proto_client.client import ProtoClient
 from proto_client.errors import (
     ProtoAPIError,
@@ -34,6 +35,7 @@ __all__ = [
     "ProtoRateLimitError",
     "ProtoServerError",
     "ProtoValidationError",
+    "RetryConfig",
     "RunCancelledError",
     "RunFailedError",
     "ToolInfo",
