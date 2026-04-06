@@ -13,6 +13,8 @@ from typing import Any, cast
 
 import httpx
 
+from proto_client.errors import from_response
+
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
@@ -56,13 +58,15 @@ class AsyncRunsNamespace:
         if webhook_metadata is not None:
             body["webhook_metadata"] = webhook_metadata
         resp = await self._http.post("/runs", params={"execute": str(execute).lower()}, json=body)
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(dict[str, Any], resp.json())
 
     async def get(self, run_id: str) -> dict[str, Any]:
         """GET /runs/{run_id} — fetch run status and stage results."""
         resp = await self._http.get(f"/runs/{run_id}")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(dict[str, Any], resp.json())
 
     async def cancel(self, run_id: str) -> dict[str, Any]:
@@ -73,7 +77,8 @@ class AsyncRunsNamespace:
         run is a no-op, not silently swallowed.
         """
         resp = await self._http.delete(f"/runs/{run_id}")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(dict[str, Any], resp.json())
 
     async def run_stage(self, run_id: str, stage_index: int) -> dict[str, Any]:
@@ -84,7 +89,8 @@ class AsyncRunsNamespace:
         recovery path.
         """
         resp = await self._http.post(f"/runs/{run_id}/stages/{stage_index}/start")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(dict[str, Any], resp.json())
 
     # ------------------------------------------------------------ validation
@@ -95,11 +101,12 @@ class AsyncRunsNamespace:
     ) -> dict[str, Any]:
         """POST /validate — validate a program without creating a run.
 
-        Raises ``httpx.HTTPStatusError`` (422) when the program is invalid;
+        Raises ``ProtoValidationError`` (422) when the program is invalid;
         the response body carries a structured ``{"errors": [...]}`` detail.
         """
         resp = await self._http.post("/validate", json={"program_data": program_data})
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(dict[str, Any], resp.json())
 
     # ------------------------------------------------------------- timepoints
@@ -133,7 +140,8 @@ class AsyncRunsNamespace:
                 params["timepoint"] = timepoint
             url = f"/runs/{run_id}/stages/{stage}/timepoints"
         resp = await self._http.get(url, params=params)
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(list[dict[str, Any]], resp.json())
 
     # ------------------------------------------------------------- discovery
@@ -141,22 +149,26 @@ class AsyncRunsNamespace:
     async def list_constraints(self) -> list[dict[str, Any]]:
         """GET /constraints — list registered constraints with their params."""
         resp = await self._http.get("/constraints")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(list[dict[str, Any]], resp.json())
 
     async def list_generators(self) -> list[dict[str, Any]]:
         """GET /generators — list registered generators with their params."""
         resp = await self._http.get("/generators")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(list[dict[str, Any]], resp.json())
 
     async def list_optimizers(self) -> list[dict[str, Any]]:
         """GET /optimizers — list registered optimizers with their params."""
         resp = await self._http.get("/optimizers")
-        resp.raise_for_status()
+        if resp.is_error:
+            raise from_response(resp)
         return cast(list[dict[str, Any]], resp.json())
 
-    def _check_terminal(self, run_id: str, response: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _check_terminal(run_id: str, response: dict[str, Any]) -> dict[str, Any]:
         """Return the response if completed, raise if failed/cancelled."""
         state = response["status"]
         if state == "completed":

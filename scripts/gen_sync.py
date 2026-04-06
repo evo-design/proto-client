@@ -83,6 +83,7 @@ def main() -> None:
         "async with AsyncProtoClient(...) as client:": ("with ProtoClient(...) as client:"),
         "run = await client.runs.create(program_data={...})": ("run = client.runs.create(program_data={...})"),
         "status = await client.runs.get(run[": ("status = client.runs.get(run["),
+        "Initialize with an httpx AsyncClient.": "Initialize with an httpx Client.",
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name

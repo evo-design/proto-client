@@ -1,10 +1,9 @@
-"""AsyncToolsNamespace — skeleton only.
+"""AsyncToolsNamespace — skeleton pending integration with typed models.
 
-The sync ``ToolsNamespace`` in ``proto_client/tools.py`` is owned by issue #2
-(typed Pydantic models) which is in flight in a sibling branch. To avoid
-merge conflicts we ship a skeleton here whose methods raise
-``NotImplementedError``. The integration PR after #2 lands will port the
-method bodies to async and wire up the real implementation.
+The sync ``ToolsNamespace`` in ``proto_client/tools.py`` is the real
+implementation. This async skeleton mirrors its method signatures so the
+integration PR is a body-fill, not a rename. Methods raise
+``NotImplementedError`` until then.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ _PENDING = (
     "AsyncToolsNamespace is pending integration with issue #2 (typed models). Use the sync ProtoClient.tools for now."
 )
 
-
 _list = list
 
 
@@ -29,6 +27,9 @@ class AsyncToolsNamespace:
         self._http = http
 
     async def list(self) -> _list[dict[str, str]]:
+        raise NotImplementedError(_PENDING)
+
+    async def get_schema(self, tool_key: str) -> dict[str, Any]:
         raise NotImplementedError(_PENDING)
 
     async def submit(
@@ -47,7 +48,7 @@ class AsyncToolsNamespace:
     ) -> str:
         raise NotImplementedError(_PENDING)
 
-    async def poll(self, tool_key: str, job_id: str) -> dict[str, Any]:
+    async def get(self, tool_key: str, job_id: str) -> dict[str, Any]:
         raise NotImplementedError(_PENDING)
 
     async def cancel(self, tool_key: str, job_id: str) -> dict[str, Any]:

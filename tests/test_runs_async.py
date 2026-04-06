@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from proto_client._async.runs import AsyncRunsNamespace
+from proto_client.errors import ProtoAPIError, ProtoValidationError
 
 
 def make_ns(handler) -> AsyncRunsNamespace:
@@ -91,9 +92,9 @@ async def test_cancel_completed_run_propagates_400():
         return httpx.Response(400, json={"detail": "Cannot cancel run with status: completed"})
 
     ns = make_ns(handler)
-    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+    with pytest.raises(ProtoAPIError) as exc_info:
         await ns.cancel("done")
-    assert exc_info.value.response.status_code == 400
+    assert exc_info.value.status_code == 400
 
 
 async def test_validate_ok():
@@ -114,9 +115,9 @@ async def test_validate_errors_propagate_422():
         )
 
     ns = make_ns(handler)
-    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+    with pytest.raises(ProtoValidationError) as exc_info:
         await ns.validate({})
-    assert exc_info.value.response.status_code == 422
+    assert exc_info.value.status_code == 422
 
 
 async def test_get_timepoints_all_stages():
