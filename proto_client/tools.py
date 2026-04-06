@@ -1,5 +1,7 @@
 """Tools namespace — wraps the tools API endpoints."""
 
+from __future__ import annotations
+
 import time
 from typing import Any, cast
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -20,7 +21,7 @@ _URL = "https://proto-tools.evodesign.org/x"
 _REQ = httpx.Request("GET", _URL)
 
 
-def _resp(status: int, **kwargs: object) -> httpx.Response:
+def _resp(status: int, **kwargs: Any) -> httpx.Response:
     return httpx.Response(status, request=_REQ, **kwargs)
 
 
@@ -66,7 +67,7 @@ def _sync_transport(
     max_retries: int = 2,
     initial_delay: float = 0.5,
     jitter: float = 0.0,
-    **cfg_kwargs: object,
+    **cfg_kwargs: Any,
 ) -> tuple[RetryTransport, SimpleNamespace, list[float]]:
     handler, counter = _sequence_handler(responses)
     delays, sleep = _capturing_sleep()
