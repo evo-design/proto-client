@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import time
 from asyncio import sleep as _sleep
+from collections.abc import AsyncGenerator
 from typing import Any, cast
 
 import httpx
+from httpx_sse import aconnect_sse
 
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
+from proto_client.events import CancelledEvent, CompletedEvent, FailedEvent, RunEvent, parse_sse_event
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -223,3 +226,134 @@ class AsyncRunsNamespace:
             if remaining <= 0:
                 raise TimeoutError(f"Run {run_id} did not complete within {timeout}s")
             await _sleep(min(poll_interval, remaining))
+
+    # -------------------------------------------------------------- streaming
+
+    async def stream(self, run_id: str) -> AsyncGenerator[RunEvent, None]:
+        """Stream SSE events for a run.
+
+        Connects to ``GET /events?run_id={run_id}`` and yields typed
+        :class:`~proto_client.events.RunEvent` subclasses. The SSE
+        connection closes when the generator is exhausted or explicitly
+        closed. Skips the server's ``connected`` keep-alive event.
+
+        .. note::
+
+           The SSE connection inherits the httpx client timeout for the
+           initial connect, but there is no read timeout between events.
+           If the server hangs without closing the connection, the client
+           will block indefinitely. Use :meth:`run` (polling) as a
+           fallback for timeout-sensitive callers.
+
+        Usage::
+
+            async for event in client.runs.stream(run_id):
+                match event.type:
+                    case "progress":
+                        print(event.progress_percent)
+                    case "completed":
+                        print(event.stage_results)
+        """
+        async with aconnect_sse(self._http, "GET", "/events", params={"run_id": run_id}) as es:
+            if es.response.is_error:
+                raise from_response(es.response)
+            async for sse in es.aiter_sse():
+                try:
+                    data = sse.json()
+                except ValueError:
+                    continue
+                event = parse_sse_event(sse.event, data)
+                if event is not None:
+                    yield event
+
+    async def run_stream(
+        self,
+        program_data: dict[str, Any],
+        execute: bool = True,
+        webhook_url: str | None = None,
+        webhook_metadata: dict[str, Any] | None = None,
+    ) -> AsyncRunStream:
+        """Create a run and stream its events.
+
+        Returns an :class:`AsyncRunStream` that is both async-iterable and
+        an async context manager. After iteration completes, access the
+        final result via ``.result``.
+
+        .. note::
+
+           The SSE connection is opened *after* the run is created. Events
+           emitted between ``create()`` returning and the SSE connect may
+           be missed (typically only the earliest progress events). The
+           terminal event is never lost.
+
+        Usage::
+
+            async with await client.runs.run_stream(program_data={...}) as stream:
+                async for event in stream:
+                    print(event.type)
+                print(stream.result)
+        """
+        created = await self.create(
+            program_data,
+            execute=execute,
+            webhook_url=webhook_url,
+            webhook_metadata=webhook_metadata,
+        )
+        run_id: str = created["run_id"]
+        return AsyncRunStream(run_id=run_id, stream=self.stream(run_id))
+
+
+class AsyncRunStream:
+    """Wrapper that iterates run events and captures the final result.
+
+    Use as an async context manager and async iterator::
+
+        async with stream:
+            async for event in stream:
+                ...
+        final = stream.result
+
+    ``.result`` holds the ``CompletedEvent`` data (or ``None`` if the run
+    did not complete). For failed/cancelled runs, inspect ``.final_event``
+    or match on the terminal event during iteration — the polling
+    ``run()`` method raises on these, but streaming yields them for the
+    caller to handle.
+    """
+
+    def __init__(self, run_id: str, stream: AsyncGenerator[RunEvent, None]) -> None:
+        """Wrap *stream* to capture the completed result for *run_id*."""
+        self.run_id = run_id
+        self._stream = stream
+        self._result: dict[str, Any] | None = None
+        self._final_event: RunEvent | None = None
+
+    async def __aenter__(self) -> AsyncRunStream:
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        await self.close()
+
+    def __aiter__(self) -> AsyncRunStream:
+        return self
+
+    async def __anext__(self) -> RunEvent:
+        event = await anext(self._stream)
+        if isinstance(event, (CompletedEvent, FailedEvent, CancelledEvent)):
+            self._final_event = event
+        if isinstance(event, CompletedEvent):
+            self._result = event.data
+        return event
+
+    @property
+    def result(self) -> dict[str, Any] | None:
+        """The ``CompletedEvent`` data, or ``None`` if not yet finished."""
+        return self._result
+
+    @property
+    def final_event(self) -> RunEvent | None:
+        """The last terminal event (completed/failed/cancelled), if any."""
+        return self._final_event
+
+    async def close(self) -> None:
+        """Close the underlying SSE connection."""
+        await self._stream.aclose()
