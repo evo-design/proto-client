@@ -298,25 +298,21 @@ class RunStream:
     """
 
     def __init__(self, run_id: str, stream: Iterator[RunEvent]) -> None:
-        """Initialize with a run ID and an event stream."""
+        """Wrap *stream* to capture the completed result for *run_id*."""
         self.run_id = run_id
         self._stream = stream
         self._result: dict[str, Any] | None = None
 
     def __enter__(self) -> RunStream:
-        """Enter the context."""
         return self
 
     def __exit__(self, *args: Any) -> None:
-        """Exit the context and close the stream."""
         self.close()
 
     def __iter__(self) -> RunStream:
-        """Return self as the iterator."""
         return self
 
     def __next__(self) -> RunEvent:
-        """Yield the next event, capturing completed results."""
         event = self._stream.__next__()
         if isinstance(event, CompletedEvent):
             self._result = event.data

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RunEvent(BaseModel):
@@ -37,8 +37,8 @@ class ProgressEvent(RunEvent):
     progress_percent: float | None = None
     optimizer_stage_idx: int = 0
     total_stages: int | None = None
-    results: list[Any] = []
-    proposal_results: list[Any] = []
+    results: list[Any] = Field(default_factory=list)
+    proposal_results: list[Any] = Field(default_factory=list)
 
 
 class StageCompleteEvent(RunEvent):
@@ -47,14 +47,14 @@ class StageCompleteEvent(RunEvent):
     type: Literal["stage_complete"] = "stage_complete"
     optimizer_stage_idx: int = 0
     best_result_idx: int = 0
-    results: list[Any] = []
+    results: list[Any] = Field(default_factory=list)
 
 
 class CompletedEvent(RunEvent):
     """Entire run finished successfully."""
 
     type: Literal["completed"] = "completed"
-    stage_results: list[Any] = []
+    stage_results: list[Any] = Field(default_factory=list)
 
 
 class FailedEvent(RunEvent):
@@ -92,7 +92,7 @@ def parse_sse_event(event_type: str | None, data: dict[str, Any]) -> RunEvent | 
     if cls is None:
         return None
     return cls(
-        run_id=data.get("run_id", ""),
+        run_id=data["run_id"],
         timestamp=data.get("timestamp"),
         data=data,
         **{k: v for k, v in data.items() if k in cls.model_fields and k not in ("type", "run_id", "timestamp", "data")},

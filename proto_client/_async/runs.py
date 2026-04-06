@@ -296,25 +296,21 @@ class AsyncRunStream:
     """
 
     def __init__(self, run_id: str, stream: AsyncIterator[RunEvent]) -> None:
-        """Initialize with a run ID and an event stream."""
+        """Wrap *stream* to capture the completed result for *run_id*."""
         self.run_id = run_id
         self._stream = stream
         self._result: dict[str, Any] | None = None
 
     async def __aenter__(self) -> AsyncRunStream:
-        """Enter the async context."""
         return self
 
     async def __aexit__(self, *args: Any) -> None:
-        """Exit the async context and close the stream."""
         await self.close()
 
     def __aiter__(self) -> AsyncRunStream:
-        """Return self as the async iterator."""
         return self
 
     async def __anext__(self) -> RunEvent:
-        """Yield the next event, capturing completed results."""
         event = await self._stream.__anext__()
         if isinstance(event, CompletedEvent):
             self._result = event.data

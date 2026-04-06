@@ -99,11 +99,6 @@ def main() -> None:
         "async for event in stream:": "for event in stream:",
         "an :class:`AsyncRunStream`": "a :class:`RunStream`",
         "Use as an async context manager and async iterator": "Use as a context manager and iterator",
-        "Enter the async context.": "Enter the context.",
-        "Exit the async context and close the stream.": "Exit the context and close the stream.",
-        "Return self as the async iterator.": "Return self as the iterator.",
-        "Yield the next event, capturing completed results.": "Yield the next event, capturing completed results.",
-        "Initialize with a run ID and an event stream.": "Initialize with a run ID and an event stream.",
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name
