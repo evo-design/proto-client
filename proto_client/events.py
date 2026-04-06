@@ -91,11 +91,20 @@ def parse_sse_event(event_type: str | None, data: dict[str, Any]) -> RunEvent | 
     cls = _EVENT_CLASSES.get(event_type)
     if cls is None:
         return None
+    try:
+        run_id = data["run_id"]
+    except KeyError:
+        return None
+    # Forward-compat: pass any server fields that match the model, so new
+    # fields the server adds are picked up without an SDK update.
+    extra = {
+        k: v for k, v in data.items() if k in cls.model_fields and k not in ("type", "run_id", "timestamp", "data")
+    }
     return cls(
-        run_id=data["run_id"],
+        run_id=run_id,
         timestamp=data.get("timestamp"),
         data=data,
-        **{k: v for k, v in data.items() if k in cls.model_fields and k not in ("type", "run_id", "timestamp", "data")},
+        **extra,
     )
 
 

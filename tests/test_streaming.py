@@ -133,6 +133,10 @@ def test_parse_none_type_returns_none() -> None:
     assert parse_sse_event(None, {"run_id": "r1"}) is None
 
 
+def test_parse_missing_run_id_returns_none() -> None:
+    assert parse_sse_event("progress", {"progress_percent": 50.0}) is None
+
+
 # ------------------------------------------------------------------- sync stream
 
 
@@ -299,3 +303,58 @@ async def test_async_stream_raises_on_error_status() -> None:
         with pytest.raises(ProtoAuthError):
             async for _ in ns.stream("r1"):
                 pass
+
+
+# -------------------------------------------------------- stream terminal states
+
+
+def test_sync_stream_failed_event_leaves_result_none() -> None:
+    transport = _sse_transport([("progress", _PROGRESS_DATA), ("failed", _FAILED_DATA)])
+    with httpx.Client(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client.runs import RunsNamespace
+
+        ns = RunsNamespace(http)
+        with ns.run_stream(program_data={"constructs": []}) as stream:
+            events = list(stream)
+
+    assert len(events) == 2
+    assert isinstance(events[1], FailedEvent)
+    assert stream.result is None
+    assert stream.final_event is not None
+    assert isinstance(stream.final_event, FailedEvent)
+
+
+def test_sync_stream_early_close_does_not_raise() -> None:
+    transport = _sse_transport(
+        [
+            ("progress", _PROGRESS_DATA),
+            ("progress", {**_PROGRESS_DATA, "progress_percent": 75.0}),
+            ("completed", _COMPLETED_DATA),
+        ]
+    )
+    with httpx.Client(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client.runs import RunsNamespace
+
+        ns = RunsNamespace(http)
+        with ns.run_stream(program_data={"constructs": []}) as stream:
+            # Consume only the first event, then break
+            for _event in stream:
+                break
+        # Exiting context manager should not raise
+    assert stream.result is None
+
+
+def test_sync_run_stream_propagates_create_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(422, json={"detail": [{"msg": "bad program"}]}, request=request)
+        return httpx.Response(200, request=request)
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(transport=transport, base_url="https://proto-language.evodesign.org") as http:
+        from proto_client.errors import ProtoValidationError
+        from proto_client.runs import RunsNamespace
+
+        ns = RunsNamespace(http)
+        with pytest.raises(ProtoValidationError):
+            ns.run_stream(program_data={"bad": "data"})

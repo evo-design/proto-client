@@ -45,6 +45,7 @@ ADDITIONAL_REPLACEMENTS = {
     "aclose": "close",
     "aconnect_sse": "connect_sse",
     "aiter_sse": "iter_sse",
+    "anext": "next",
     # `import asyncio` → `import time`; `asyncio.sleep` → `time.sleep`.
     # CAUTION: This replaces *all* `asyncio` tokens with `time`. Only add
     # asyncio usage that has a `time.*` sync equivalent (currently: sleep).
@@ -99,6 +100,7 @@ def main() -> None:
         "async for event in stream:": "for event in stream:",
         "an :class:`AsyncRunStream`": "a :class:`RunStream`",
         "Use as an async context manager and async iterator": "Use as a context manager and iterator",
+        "        async with stream:": "        with stream:",
     }
     for name in SYNC_TARGETS:
         out = SYNC_DIR / name

@@ -18,7 +18,7 @@ import httpx
 from httpx_sse import connect_sse
 
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
-from proto_client.events import CompletedEvent, RunEvent, parse_sse_event
+from proto_client.events import CancelledEvent, CompletedEvent, FailedEvent, RunEvent, parse_sse_event
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -291,10 +291,16 @@ class RunStream:
 
     Use as a context manager and iterator::
 
-        async with stream:
+        with stream:
             for event in stream:
                 ...
         final = stream.result
+
+    ``.result`` holds the ``CompletedEvent`` data (or ``None`` if the run
+    did not complete). For failed/cancelled runs, inspect ``.final_event``
+    or match on the terminal event during iteration — the polling
+    ``run()`` method raises on these, but streaming yields them for the
+    caller to handle.
     """
 
     def __init__(self, run_id: str, stream: Iterator[RunEvent]) -> None:
@@ -302,6 +308,7 @@ class RunStream:
         self.run_id = run_id
         self._stream = stream
         self._result: dict[str, Any] | None = None
+        self._final_event: RunEvent | None = None
 
     def __enter__(self) -> RunStream:
         return self
@@ -313,15 +320,22 @@ class RunStream:
         return self
 
     def __next__(self) -> RunEvent:
-        event = self._stream.__next__()
+        event = next(self._stream)
+        if isinstance(event, (CompletedEvent, FailedEvent, CancelledEvent)):
+            self._final_event = event
         if isinstance(event, CompletedEvent):
             self._result = event.data
         return event
 
     @property
     def result(self) -> dict[str, Any] | None:
-        """The completed event's data, or ``None`` if not yet finished."""
+        """The ``CompletedEvent`` data, or ``None`` if not yet finished."""
         return self._result
+
+    @property
+    def final_event(self) -> RunEvent | None:
+        """The last terminal event (completed/failed/cancelled), if any."""
+        return self._final_event
 
     def close(self) -> None:
         """Close the underlying SSE connection."""
