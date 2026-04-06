@@ -237,11 +237,25 @@ class ToolsNamespace:
                                     f"{output_model.__name__}: {exc}"
                                 ) from exc
                         items.append(BatchItemSuccess(index=item_data["index"], output=output))
-                    else:
+                    elif item_data.get("status") == "failed":
                         items.append(
                             BatchItemFailure(
                                 index=item_data["index"],
                                 error=item_data.get("error", "Unknown error"),
+                            )
+                        )
+                    else:
+                        item_status = item_data.get("status", "<missing>")
+                        logger.warning(
+                            "Batch job %s item %d has unexpected status %r",
+                            job_id,
+                            item_data.get("index", -1),
+                            item_status,
+                        )
+                        items.append(
+                            BatchItemFailure(
+                                index=item_data.get("index", -1),
+                                error=f"Unexpected status: {item_status}",
                             )
                         )
                 return BatchResult(items=items)

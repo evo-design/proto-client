@@ -122,7 +122,7 @@ class BatchItemSuccess(BaseModel):
     :attr:`JobStatusResponse.result`).
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True)
 
     index: int
     status: Literal["succeeded"] = "succeeded"

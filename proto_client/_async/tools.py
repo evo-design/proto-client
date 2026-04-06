@@ -140,9 +140,8 @@ class AsyncToolsNamespace:
     ) -> JobStatusResponse:
         """Submit batch and poll until completion.
 
-        Currently returns a single ``JobStatusResponse`` envelope. If the API
-        evolves to return per-input results, the return type will change to
-        ``list[JobStatusResponse]``.
+        .. note:: The sync client already returns ``BatchResult`` with per-item
+           results. This async version will be updated in a follow-up PR.
         """
         job_id = await self.submit_batch(tool_key, inputs_list, config)
         return await self._wait(tool_key, job_id, poll_interval, timeout, output_model)

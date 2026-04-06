@@ -53,7 +53,8 @@ class ProtoNotFoundError(ProtoAPIError):
 class ProtoConflictError(ProtoAPIError):
     """409 — request conflicts with current resource state.
 
-    Example: cancelling a job that has already completed.
+    Examples: cancelling a job that has already completed, or reusing an
+    ``Idempotency-Key`` with different inputs than the original request.
     """
 
 
