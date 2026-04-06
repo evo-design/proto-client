@@ -10,6 +10,8 @@ from proto_client.errors import (
     ProtoRateLimitError,
     ProtoServerError,
     ProtoValidationError,
+    RunCancelledError,
+    RunFailedError,
 )
 from proto_client.models import (
     JobResponse,
@@ -32,6 +34,8 @@ __all__ = [
     "ProtoRateLimitError",
     "ProtoServerError",
     "ProtoValidationError",
+    "RunCancelledError",
+    "RunFailedError",
     "ToolInfo",
     "ToolSchema",
 ]

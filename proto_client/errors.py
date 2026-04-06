@@ -99,6 +99,25 @@ class ProtoServerError(ProtoAPIError):
     """5xx — server-side failure (retriable)."""
 
 
+class RunFailedError(RuntimeError):
+    """An optimization run ended with status ``failed``."""
+
+    def __init__(self, run_id: str, error_message: str | None) -> None:
+        """Initialize with run ID and server error message."""
+        self.run_id = run_id
+        self.error_message = error_message
+        super().__init__(f"Run {run_id} failed: {error_message}")
+
+
+class RunCancelledError(RuntimeError):
+    """An optimization run was cancelled."""
+
+    def __init__(self, run_id: str) -> None:
+        """Initialize with run ID."""
+        self.run_id = run_id
+        super().__init__(f"Run {run_id} was cancelled")
+
+
 def parse_retry_after(value: str | None) -> float | None:
     """Parse a ``Retry-After`` header value.
 
@@ -201,6 +220,8 @@ __all__ = [
     "ProtoRateLimitError",
     "ProtoServerError",
     "ProtoValidationError",
+    "RunCancelledError",
+    "RunFailedError",
     "from_response",
     "parse_retry_after",
 ]
