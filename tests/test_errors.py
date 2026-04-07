@@ -175,3 +175,50 @@ def test_from_response_on_2xx_returns_base_error() -> None:
     err = from_response(_response(200, {"detail": "ok"}))
     assert type(err) is ProtoAPIError
     assert err.status_code == 200
+
+
+def test_retry_after_naive_datetime() -> None:
+    """HTTP-date without tzinfo is treated as UTC (line 141)."""
+    # Build a date string that parsedate_to_datetime returns as naive.
+    # Standard HTTP dates are always timezone-aware via email.utils, so we
+    # test parse_retry_after directly with a mock.
+    from unittest.mock import patch
+
+    from proto_client.errors import parse_retry_after
+
+    future_utc = datetime.now(timezone.utc) + timedelta(seconds=5)
+    naive_future = future_utc.replace(tzinfo=None)
+
+    with patch("proto_client.errors.parsedate_to_datetime", return_value=naive_future):
+        result = parse_retry_after("some-date-string")
+    assert result is not None
+    assert 3.0 <= result <= 6.0
+
+
+def test_extract_message_validation_error_non_dict_items() -> None:
+    """Detail is a list but items are not dicts -> 'Validation error' fallback (line 167)."""
+    body = {"detail": ["error1", "error2"]}
+    err = from_response(_response(422, body))
+    assert isinstance(err, ProtoValidationError)
+    assert err.message == "Validation error"
+
+
+def test_extract_message_body_message_field() -> None:
+    """Body has 'message' key instead of 'detail' (line 170)."""
+    body = {"message": "Something went wrong"}
+    err = from_response(_response(500, body))
+    assert err.message == "Something went wrong"
+
+
+def test_extract_message_empty_detail_string() -> None:
+    """Empty string detail falls through to 'message' or default."""
+    body = {"detail": "", "message": "fallback"}
+    err = from_response(_response(500, body))
+    assert err.message == "fallback"
+
+
+def test_extract_message_empty_detail_list() -> None:
+    """Empty list detail falls through to 'message' or default."""
+    body = {"detail": [], "message": "fallback msg"}
+    err = from_response(_response(500, body))
+    assert err.message == "fallback msg"

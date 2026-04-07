@@ -7,7 +7,7 @@ import pytest
 from helpers import job_payload, mock_response
 from pydantic import BaseModel
 
-from proto_client.errors import ProtoConflictError, ProtoNotFoundError
+from proto_client.errors import ProtoAPIError, ProtoConflictError, ProtoNotFoundError
 from proto_client.models import (
     BatchItemFailure,
     BatchItemSuccess,
@@ -362,4 +362,101 @@ def test_run_batch_raises_on_failure(mock_http):
     mock_http.get.return_value = mock_response(job_payload("failed", error="Backend crashed", completed=True))
     ns = ToolsNamespace(mock_http)
     with pytest.raises(RuntimeError, match="Backend crashed"):
+        ns.run_batch("blast", [{}], poll_interval=0.01)
+
+
+# ── Error paths for get_schema, submit_batch, get, cancel ──
+
+
+def test_get_schema_error(mock_http):
+    mock_http.get.return_value = mock_response({"detail": "Not Found"}, 404)
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(ProtoNotFoundError):
+        ns.get_schema("nonexistent-tool")
+
+
+def test_submit_batch_error(mock_http):
+    mock_http.post.return_value = mock_response({"detail": "Server Error"}, 500)
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(ProtoAPIError):
+        ns.submit_batch("blast", [{"query": "MKTL"}])
+
+
+def test_get_error(mock_http):
+    mock_http.get.return_value = mock_response({"detail": "Not Found"}, 404)
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(ProtoNotFoundError):
+        ns.get("blast", "missing-job")
+
+
+def test_cancel_error(mock_http):
+    mock_http.post.return_value = mock_response({"detail": "Job already completed"}, 409)
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(ProtoConflictError):
+        ns.cancel("blast", "done-job")
+
+
+# ── _wait_batch edge cases ──
+
+
+def test_run_batch_missing_items_in_result(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("completed", result={"no_items_key": []}, completed=True))
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="missing 'items'"):
+        ns.run_batch("blast", [{}], poll_interval=0.01)
+
+
+def test_run_batch_unparseable_items(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    # Items with invalid shape — missing required fields.
+    mock_http.get.return_value = mock_response(
+        job_payload("completed", result={"items": [{"bad": "shape"}]}, completed=True)
+    )
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="unparseable items"):
+        ns.run_batch("blast", [{}], poll_interval=0.01)
+
+
+def test_run_batch_passes_failed_items_through_with_output_model(mock_http):
+    class Out(BaseModel):
+        pdb: str
+
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(
+        _batch_result_payload(
+            [
+                {"index": 0, "status": "succeeded", "output": {"pdb": "ok"}},
+                {"index": 1, "status": "failed", "error": "OOM"},
+            ]
+        )
+    )
+    ns = ToolsNamespace(mock_http)
+    result = ns.run_batch("blast", [{}, {}], poll_interval=0.01, output_model=Out)
+    assert len(result.succeeded) == 1
+    assert isinstance(result.succeeded[0].output, Out)
+    assert len(result.failed) == 1
+
+
+def test_run_batch_cancelled(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("cancelled", job_id="b1", completed=True))
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(RuntimeError, match="cancelled"):
+        ns.run_batch("blast", [{}], poll_interval=0.01)
+
+
+def test_run_batch_timeout(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("running", job_id="b1"))
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TimeoutError):
+        ns.run_batch("blast", [{}], poll_interval=0.01, timeout=0.05)
+
+
+def test_run_batch_result_none(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("completed", result=None, completed=True))
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="missing 'items'"):
         ns.run_batch("blast", [{}], poll_interval=0.01)
