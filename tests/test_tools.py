@@ -344,6 +344,19 @@ def test_run_batch_with_output_model(mock_http):
     assert result.succeeded[0].output.pdb == "structure1"
 
 
+def test_run_batch_output_model_validation_failure(mock_http):
+    class Strict(BaseModel):
+        pdb: str
+
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(
+        _batch_result_payload([{"index": 0, "status": "succeeded", "output": {"wrong_field": "oops"}}])
+    )
+    ns = ToolsNamespace(mock_http)
+    with pytest.raises(TypeError, match="does not conform to Strict"):
+        ns.run_batch("blast", [{}], poll_interval=0.01, output_model=Strict)
+
+
 def test_run_batch_raises_on_failure(mock_http):
     mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
     mock_http.get.return_value = mock_response(job_payload("failed", error="Backend crashed", completed=True))
