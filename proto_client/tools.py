@@ -9,6 +9,9 @@ from pydantic import BaseModel, ValidationError
 
 from proto_client.errors import from_response
 from proto_client.models import (
+    BatchItemFailure,
+    BatchItemSuccess,
+    BatchResult,
     JobResponse,
     JobStatus,
     JobStatusResponse,
@@ -62,11 +65,19 @@ class ToolsNamespace:
         tool_key: str,
         inputs: dict[str, Any],
         config: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
-        """Submit a job. Returns job_id."""
+        """Submit a job. Returns job_id.
+
+        Pass ``idempotency_key`` to safely retry without creating duplicate
+        jobs. Reusing a key with different inputs raises
+        :class:`~proto_client.errors.ProtoConflictError` (409).
+        """
         path = f"/api/v1/tools/{tool_key}/run"
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         logger.debug("POST %s", path)
-        resp = self._http.post(path, json={"inputs": inputs, "config": config or {}})
+        resp = self._http.post(path, json={"inputs": inputs, "config": config or {}}, headers=headers)
         logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
@@ -77,11 +88,19 @@ class ToolsNamespace:
         tool_key: str,
         inputs_list: _list[dict[str, Any]],
         config: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
-        """Submit a batch job. Returns job_id."""
+        """Submit a batch job. Returns job_id.
+
+        Pass ``idempotency_key`` to safely retry without creating duplicate
+        jobs. Reusing a key with different inputs raises
+        :class:`~proto_client.errors.ProtoConflictError` (409).
+        """
         path = f"/api/v1/tools/{tool_key}/run-batch"
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         logger.debug("POST %s", path)
-        resp = self._http.post(path, json={"inputs_list": inputs_list, "config": config or {}})
+        resp = self._http.post(path, json={"inputs_list": inputs_list, "config": config or {}}, headers=headers)
         logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
@@ -116,6 +135,7 @@ class ToolsNamespace:
         timeout: float = 600.0,
         *,
         output_model: type[T] | None = None,
+        idempotency_key: str | None = None,
     ) -> JobStatusResponse:
         """Submit and poll until completion. Returns the full job envelope.
 
@@ -124,7 +144,7 @@ class ToolsNamespace:
 
         Raises RuntimeError on failure/cancellation, TimeoutError on timeout.
         """
-        job_id = self.submit(tool_key, inputs, config)
+        job_id = self.submit(tool_key, inputs, config, idempotency_key=idempotency_key)
         return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     def run_batch(
@@ -136,15 +156,18 @@ class ToolsNamespace:
         timeout: float = 600.0,
         *,
         output_model: type[T] | None = None,
-    ) -> JobStatusResponse:
+        idempotency_key: str | None = None,
+    ) -> BatchResult:
         """Submit batch and poll until completion.
 
-        Currently returns a single ``JobStatusResponse`` envelope. If the API
-        evolves to return per-input results, the return type will change to
-        ``list[JobStatusResponse]``.
+        Returns a :class:`~proto_client.models.BatchResult` with per-item
+        results. Each item is either a :class:`BatchItemSuccess` or
+        :class:`BatchItemFailure`.
+
+        Pass ``output_model`` to validate each succeeded item's output.
         """
-        job_id = self.submit_batch(tool_key, inputs_list, config)
-        return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
+        job_id = self.submit_batch(tool_key, inputs_list, config, idempotency_key=idempotency_key)
+        return self._wait_batch(tool_key, job_id, poll_interval, timeout, output_model)
 
     def _wait(
         self,
@@ -184,4 +207,51 @@ class ToolsNamespace:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
+            time.sleep(min(poll_interval, remaining))
+
+    def _wait_batch(
+        self,
+        tool_key: str,
+        job_id: str,
+        poll_interval: float,
+        timeout: float,
+        output_model: type[T] | None,
+    ) -> BatchResult:
+        """Poll until terminal status, then parse the flat items list into a BatchResult."""
+        deadline = time.monotonic() + timeout
+        while True:
+            status = self.get(tool_key, job_id)
+            if status.status is JobStatus.completed:
+                if not isinstance(status.result, dict) or "items" not in status.result:
+                    raise TypeError(f"Batch job {job_id} missing 'items' in result")
+                try:
+                    batch = BatchResult.model_validate({"items": status.result["items"]})
+                except ValidationError as exc:
+                    raise TypeError(f"Batch job {job_id} returned unparseable items: {exc}") from exc
+                if output_model is not None:
+                    validated: _list[BatchItemSuccess | BatchItemFailure] = []
+                    for item in batch.items:
+                        if isinstance(item, BatchItemSuccess):
+                            try:
+                                parsed = output_model.model_validate(item.output)
+                            except ValidationError as exc:
+                                raise TypeError(
+                                    f"Batch item {item.index} does not conform to {output_model.__name__}: {exc}"
+                                ) from exc
+                            validated.append(item.model_copy(update={"output": parsed}))
+                        else:
+                            validated.append(item)
+                    batch = BatchResult(items=validated)
+                logger.info("Batch job %s completed with %d items", job_id, len(batch.items))
+                return batch
+            if status.status is JobStatus.failed:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
+                raise RuntimeError(f"Batch job {job_id} failed: {status.error}")
+            if status.status is JobStatus.cancelled:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
+                raise RuntimeError(f"Batch job {job_id} was cancelled")
+            logger.debug("Polling batch job %s (status=%s)", job_id, status.status.value)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Batch job {job_id} did not complete within {timeout}s")
             time.sleep(min(poll_interval, remaining))

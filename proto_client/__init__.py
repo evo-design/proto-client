@@ -19,6 +19,9 @@ from proto_client.errors import (
     RunFailedError,
 )
 from proto_client.models import (
+    BatchItemFailure,
+    BatchItemSuccess,
+    BatchResult,
     ConstraintResult,
     ConstraintSpec,
     ConstructResult,
@@ -44,6 +47,9 @@ from proto_client.models import (
 __all__ = [
     "__version__",
     "AsyncProtoClient",
+    "BatchItemFailure",
+    "BatchItemSuccess",
+    "BatchResult",
     "ConstraintResult",
     "ConstraintSpec",
     "ConstructResult",

@@ -14,12 +14,15 @@ to :meth:`proto_client.tools.ToolsNamespace.run` to opt into a typed
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Discriminator
 
 __all__ = [
     # Tools API models
+    "BatchItemFailure",
+    "BatchItemSuccess",
+    "BatchResult",
     "JobResponse",
     "JobStatus",
     "JobStatusResponse",
@@ -108,6 +111,76 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
+
+
+class BatchItemSuccess(BaseModel):
+    """A single succeeded item from a batch run.
+
+    ``output`` is ``dict[str, Any]`` by default. When ``output_model`` is
+    passed to :meth:`~proto_client.tools.ToolsNamespace.run_batch`, it
+    becomes an instance of that model at runtime (same swap pattern as
+    :attr:`JobStatusResponse.result`).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    index: int
+    status: Literal["succeeded"] = "succeeded"
+    output: Any
+
+
+class BatchItemFailure(BaseModel):
+    """A single failed item from a batch run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    index: int
+    status: Literal["failed"] = "failed"
+    error: str
+
+
+BatchItem = Annotated[BatchItemSuccess | BatchItemFailure, Discriminator("status")]
+
+
+class BatchResult(BaseModel):
+    """Structured result from a batch tool run.
+
+    Each item in ``items`` is either a :class:`BatchItemSuccess` or
+    :class:`BatchItemFailure`, discriminated on the ``status`` field.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[BatchItem]
+
+    @property
+    def succeeded(self) -> list[BatchItemSuccess]:
+        """Items that completed successfully."""
+        return [it for it in self.items if isinstance(it, BatchItemSuccess)]
+
+    @property
+    def failed(self) -> list[BatchItemFailure]:
+        """Items that failed."""
+        return [it for it in self.items if isinstance(it, BatchItemFailure)]
+
+    @property
+    def errors(self) -> dict[int, str]:
+        """Map of input index to error message for failed items."""
+        return {it.index: it.error for it in self.failed}
+
+    def get_output(self, index: int) -> Any:
+        """Get the output for a specific input index, or ``None`` if it failed."""
+        for it in self.succeeded:
+            if it.index == index:
+                return it.output
+        return None
+
+    def get_error(self, index: int) -> str | None:
+        """Get the error for a specific input index, or ``None`` if it succeeded."""
+        for it in self.failed:
+            if it.index == index:
+                return it.error
+        return None
 
 
 # ---------------------------------------------------------------------------
