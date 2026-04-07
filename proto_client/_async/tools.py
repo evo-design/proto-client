@@ -63,11 +63,19 @@ class AsyncToolsNamespace:
         tool_key: str,
         inputs: dict[str, Any],
         config: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
-        """Submit a job. Returns job_id."""
+        """Submit a job. Returns job_id.
+
+        Pass ``idempotency_key`` to safely retry without creating duplicate
+        jobs. Reusing a key with different inputs raises
+        :class:`~proto_client.errors.ProtoConflictError` (409).
+        """
         path = f"/api/v1/tools/{tool_key}/run"
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         logger.debug("POST %s", path)
-        resp = await self._http.post(path, json={"inputs": inputs, "config": config or {}})
+        resp = await self._http.post(path, json={"inputs": inputs, "config": config or {}}, headers=headers)
         logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
@@ -78,11 +86,19 @@ class AsyncToolsNamespace:
         tool_key: str,
         inputs_list: _list[dict[str, Any]],
         config: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
-        """Submit a batch job. Returns job_id."""
+        """Submit a batch job. Returns job_id.
+
+        Pass ``idempotency_key`` to safely retry without creating duplicate
+        jobs. Reusing a key with different inputs raises
+        :class:`~proto_client.errors.ProtoConflictError` (409).
+        """
         path = f"/api/v1/tools/{tool_key}/run-batch"
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         logger.debug("POST %s", path)
-        resp = await self._http.post(path, json={"inputs_list": inputs_list, "config": config or {}})
+        resp = await self._http.post(path, json={"inputs_list": inputs_list, "config": config or {}}, headers=headers)
         logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
@@ -117,6 +133,7 @@ class AsyncToolsNamespace:
         timeout: float = 600.0,
         *,
         output_model: type[T] | None = None,
+        idempotency_key: str | None = None,
     ) -> JobStatusResponse:
         """Submit and poll until completion. Returns the full job envelope.
 
@@ -125,7 +142,7 @@ class AsyncToolsNamespace:
 
         Raises RuntimeError on failure/cancellation, TimeoutError on timeout.
         """
-        job_id = await self.submit(tool_key, inputs, config)
+        job_id = await self.submit(tool_key, inputs, config, idempotency_key=idempotency_key)
         return await self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     async def run_batch(
@@ -137,13 +154,14 @@ class AsyncToolsNamespace:
         timeout: float = 600.0,
         *,
         output_model: type[T] | None = None,
+        idempotency_key: str | None = None,
     ) -> JobStatusResponse:
         """Submit batch and poll until completion.
 
         .. note:: The sync client already returns ``BatchResult`` with per-item
            results. This async version will be updated in a follow-up PR.
         """
-        job_id = await self.submit_batch(tool_key, inputs_list, config)
+        job_id = await self.submit_batch(tool_key, inputs_list, config, idempotency_key=idempotency_key)
         return await self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     async def _wait(

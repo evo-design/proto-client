@@ -224,42 +224,26 @@ class ToolsNamespace:
             if status.status is JobStatus.completed:
                 if not isinstance(status.result, dict) or "items" not in status.result:
                     raise TypeError(f"Batch job {job_id} missing 'items' in result")
-                items: list[BatchItemSuccess | BatchItemFailure] = []
-                for item_data in status.result["items"]:
-                    if item_data.get("status") == "succeeded":
-                        output = item_data.get("output", {})
-                        if output_model is not None:
+                try:
+                    batch = BatchResult.model_validate({"items": status.result["items"]})
+                except ValidationError as exc:
+                    raise TypeError(f"Batch job {job_id} returned unparseable items: {exc}") from exc
+                if output_model is not None:
+                    validated: _list[BatchItemSuccess | BatchItemFailure] = []
+                    for item in batch.items:
+                        if isinstance(item, BatchItemSuccess):
                             try:
-                                output = output_model.model_validate(output)
+                                parsed = output_model.model_validate(item.output)
                             except ValidationError as exc:
                                 raise TypeError(
-                                    f"Batch item {item_data['index']} does not conform to "
-                                    f"{output_model.__name__}: {exc}"
+                                    f"Batch item {item.index} does not conform to {output_model.__name__}: {exc}"
                                 ) from exc
-                        items.append(BatchItemSuccess(index=item_data["index"], output=output))
-                    elif item_data.get("status") == "failed":
-                        items.append(
-                            BatchItemFailure(
-                                index=item_data["index"],
-                                error=item_data.get("error", "Unknown error"),
-                            )
-                        )
-                    else:
-                        item_status = item_data.get("status", "<missing>")
-                        logger.warning(
-                            "Batch job %s item %d has unexpected status %r",
-                            job_id,
-                            item_data.get("index", -1),
-                            item_status,
-                        )
-                        items.append(
-                            BatchItemFailure(
-                                index=item_data.get("index", -1),
-                                error=f"Unexpected status: {item_status}",
-                            )
-                        )
-                logger.info("Batch job %s completed with %d items", job_id, len(items))
-                return BatchResult(items=items)
+                            validated.append(item.model_copy(update={"output": parsed}))
+                        else:
+                            validated.append(item)
+                    batch = BatchResult(items=validated)
+                logger.info("Batch job %s completed with %d items", job_id, len(batch.items))
+                return batch
             if status.status is JobStatus.failed:
                 logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
                 raise RuntimeError(f"Batch job {job_id} failed: {status.error}")

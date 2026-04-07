@@ -14,9 +14,9 @@ to :meth:`proto_client.tools.ToolsNamespace.run` to opt into a typed
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Discriminator
 
 __all__ = [
     # Tools API models
@@ -139,17 +139,19 @@ class BatchItemFailure(BaseModel):
     error: str
 
 
+BatchItem = Annotated[BatchItemSuccess | BatchItemFailure, Discriminator("status")]
+
+
 class BatchResult(BaseModel):
     """Structured result from a batch tool run.
 
     Each item in ``items`` is either a :class:`BatchItemSuccess` or
-    :class:`BatchItemFailure`, carrying the original input index for
-    positional tracking.
+    :class:`BatchItemFailure`, discriminated on the ``status`` field.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    items: list[BatchItemSuccess | BatchItemFailure]
+    items: list[BatchItem]
 
     @property
     def succeeded(self) -> list[BatchItemSuccess]:
