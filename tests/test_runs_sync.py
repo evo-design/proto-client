@@ -98,7 +98,6 @@ def test_sync_get_error():
 # ── cancel() ──────────────────────────────────────────────────────────
 
 
-
 def test_sync_cancel_error():
     def handler(request):
         return httpx.Response(400, json={"detail": "Cannot cancel run with status: completed"})
@@ -377,7 +376,6 @@ def test_sync_run_polls_until_completed(monkeypatch):
     final = ns.run({"constructs": [{}], "optimization_stages": [{}]}, poll_interval=0.01)
     assert isinstance(final, RunResponse)
     assert final.status.value == "completed"
-
 
 
 def test_sync_run_short_circuits_on_cancelled(monkeypatch):

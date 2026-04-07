@@ -47,7 +47,6 @@ def _capturing_sleep() -> tuple[list[float], Callable[[float], None]]:
     return delays, sleep
 
 
-
 def _sync_transport(
     responses: list[httpx.Response | Exception],
     *,
@@ -71,7 +70,6 @@ def _sync_transport(
 def _get(transport: RetryTransport) -> httpx.Response:
     with httpx.Client(transport=transport) as client:
         return client.get(_URL)
-
 
 
 # ----------------------------------------------------------------------- config
