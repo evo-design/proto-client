@@ -1,5 +1,7 @@
 """Tests for ProtoClient initialization and configuration."""
 
+import importlib
+import logging
 import os
 from unittest.mock import patch
 
@@ -119,3 +121,93 @@ def test_explicit_base_url_overrides_env():
     with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://env:8000"}):
         with ProtoClient(tools_base_url="http://explicit:9000") as c:
             assert str(c.tools._http.base_url).rstrip("/") == "http://explicit:9000"
+
+
+def test_close_reraises_first_error():
+    """When a client raises during close(), the first error is re-raised after all clients are closed."""
+    c = ProtoClient(
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+    )
+
+    original_close = c._clients[0].close
+
+    def exploding_close():
+        original_close()
+        raise RuntimeError("close boom")
+
+    c._clients[0].close = exploding_close
+
+    with pytest.raises(RuntimeError, match="close boom"):
+        c.close()
+    # Second client should still be closed even though the first one raised.
+    assert c._clients == []
+
+
+def test_close_captures_first_error_only():
+    """When multiple clients raise during close(), only the first error propagates."""
+    c = ProtoClient(
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+    )
+
+    original_close_0 = c._clients[0].close
+    original_close_1 = c._clients[1].close
+
+    def exploding_close_0():
+        original_close_0()
+        raise RuntimeError("first boom")
+
+    def exploding_close_1():
+        original_close_1()
+        raise RuntimeError("second boom")
+
+    c._clients[0].close = exploding_close_0
+    c._clients[1].close = exploding_close_1
+
+    with pytest.raises(RuntimeError, match="first boom"):
+        c.close()
+
+
+# ── PROTO_LOG env var ──
+
+
+def test_proto_log_debug_sets_level():
+    import proto_client
+
+    logger = logging.getLogger("proto_client")
+    original_level = logger.level
+    original_handlers = logger.handlers[:]
+
+    try:
+        with patch.dict(os.environ, {"PROTO_LOG": "debug"}):
+            importlib.reload(proto_client)
+        assert logger.level == logging.DEBUG
+        # At least one StreamHandler should have been added.
+        stream_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+        ]
+        assert len(stream_handlers) >= 1
+    finally:
+        logger.setLevel(original_level)
+        logger.handlers = original_handlers
+        importlib.reload(proto_client)
+
+
+def test_proto_log_info_sets_level():
+    import proto_client
+
+    logger = logging.getLogger("proto_client")
+    original_level = logger.level
+    original_handlers = logger.handlers[:]
+
+    try:
+        with patch.dict(os.environ, {"PROTO_LOG": "info"}):
+            importlib.reload(proto_client)
+        assert logger.level == logging.INFO
+    finally:
+        logger.setLevel(original_level)
+        logger.handlers = original_handlers
+        importlib.reload(proto_client)
