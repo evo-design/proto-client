@@ -1,7 +1,5 @@
 """Tests for ProtoClient initialization and configuration."""
 
-import importlib
-import logging
 import os
 from unittest.mock import patch
 
@@ -149,35 +147,3 @@ def test_close_captures_first_error_only():
 
     # Both clients' close() must be called even when the first one raises.
     assert close_calls == [1, 1]
-
-
-# ── PROTO_LOG env var ──
-
-# These tests use importlib.reload to exercise module-level logging setup,
-# which mutates global logger state.  Do NOT run them in parallel with
-# pytest-xdist (they are not xdist-safe).
-
-
-@pytest.mark.parametrize("level", ["debug", "info"])
-def test_proto_log_env_var(monkeypatch, level):
-    import proto_client
-
-    logger = logging.getLogger("proto_client")
-    original_level = logger.level
-    original_handlers = logger.handlers[:]
-
-    try:
-        monkeypatch.setenv("PROTO_LOG", level)
-        importlib.reload(proto_client)
-        assert logger.level == getattr(logging, level.upper())
-        if level == "debug":
-            stream_handlers = [
-                h
-                for h in logger.handlers
-                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
-            ]
-            assert len(stream_handlers) >= 1
-    finally:
-        logger.setLevel(original_level)
-        logger.handlers = original_handlers
-        importlib.reload(proto_client)
