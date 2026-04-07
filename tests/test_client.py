@@ -129,12 +129,15 @@ def test_close_captures_first_error_only():
 
     original_close_0 = c._clients[0].close
     original_close_1 = c._clients[1].close
+    close_calls = [0, 0]
 
     def exploding_close_0():
+        close_calls[0] += 1
         original_close_0()
         raise RuntimeError("first boom")
 
     def exploding_close_1():
+        close_calls[1] += 1
         original_close_1()
         raise RuntimeError("second boom")
 
@@ -144,11 +147,19 @@ def test_close_captures_first_error_only():
     with pytest.raises(RuntimeError, match="first boom"):
         c.close()
 
+    # Both clients' close() must be called even when the first one raises.
+    assert close_calls == [1, 1]
+
 
 # ── PROTO_LOG env var ──
 
+# These tests use importlib.reload to exercise module-level logging setup,
+# which mutates global logger state.  Do NOT run them in parallel with
+# pytest-xdist (they are not xdist-safe).
 
-def test_proto_log_debug_sets_level():
+
+@pytest.mark.parametrize("level", ["debug", "info"])
+def test_proto_log_env_var(monkeypatch, level):
     import proto_client
 
     logger = logging.getLogger("proto_client")
@@ -156,33 +167,16 @@ def test_proto_log_debug_sets_level():
     original_handlers = logger.handlers[:]
 
     try:
-        with patch.dict(os.environ, {"PROTO_LOG": "debug"}):
-            importlib.reload(proto_client)
-        assert logger.level == logging.DEBUG
-        # At least one StreamHandler should have been added.
-        stream_handlers = [
-            h
-            for h in logger.handlers
-            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
-        ]
-        assert len(stream_handlers) >= 1
-    finally:
-        logger.setLevel(original_level)
-        logger.handlers = original_handlers
+        monkeypatch.setenv("PROTO_LOG", level)
         importlib.reload(proto_client)
-
-
-def test_proto_log_info_sets_level():
-    import proto_client
-
-    logger = logging.getLogger("proto_client")
-    original_level = logger.level
-    original_handlers = logger.handlers[:]
-
-    try:
-        with patch.dict(os.environ, {"PROTO_LOG": "info"}):
-            importlib.reload(proto_client)
-        assert logger.level == logging.INFO
+        assert logger.level == getattr(logging, level.upper())
+        if level == "debug":
+            stream_handlers = [
+                h
+                for h in logger.handlers
+                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+            ]
+            assert len(stream_handlers) >= 1
     finally:
         logger.setLevel(original_level)
         logger.handlers = original_handlers

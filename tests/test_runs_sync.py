@@ -332,13 +332,18 @@ def test_check_terminal_cancelled():
 
 
 def test_check_terminal_unexpected_status():
-    """A terminal status that isn't completed/cancelled/failed should raise AssertionError."""
+    """A terminal status that isn't completed/cancelled/failed should raise AssertionError.
+
+    This is a defensive assertion that should be unreachable in production --
+    every real terminal status is handled by an explicit branch.  We test it
+    to ensure the safety net fires if a new terminal status is ever added to
+    the enum without a corresponding handler.
+    """
     from proto_client.runs import RunsNamespace
 
-    # Manually construct a response with a non-standard terminal status.
-    # We can't use a real RunStatus value that isn't in the enum, so we
-    # test the code path by passing a status that is NOT completed/cancelled/failed.
-    # The 'pending' status will hit the assertion.
+    # Force a status that no branch handles.  'pending' is non-terminal in
+    # practice, but _check_terminal only sees it if the caller already decided
+    # the run is terminal, so it falls through to the assertion.
     resp = RunResponse.model_validate(run_response_json("r1", "pending"))
     with pytest.raises(AssertionError, match="Unexpected terminal status"):
         RunsNamespace._check_terminal("r1", resp)
@@ -398,15 +403,8 @@ def test_sync_run_times_out(monkeypatch):
 
     monkeypatch.setattr(runs_mod, "_sleep", lambda _s: None)
 
-    values = [0.0, 0.0, 100.0]
-    calls = {"i": 0}
-
-    def fake_monotonic():
-        i = calls["i"]
-        calls["i"] = min(i + 1, len(values) - 1)
-        return values[i]
-
-    monkeypatch.setattr(runs_mod.time, "monotonic", fake_monotonic)
+    times = iter([0.0, 0.0, 100.0])
+    monkeypatch.setattr(runs_mod.time, "monotonic", lambda: next(times, 100.0))
 
     def handler(request):
         if request.method == "POST":
