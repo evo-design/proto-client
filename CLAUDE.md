@@ -15,17 +15,10 @@ uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 ## Commands
 
 ```bash
-make check          # Run all checks (lint + typecheck + test)
-make test           # pytest with 80% coverage minimum
-make lint           # ruff check + format validation
-make typecheck      # mypy strict
-
-# Raw equivalents
-pytest                           # Run all tests
+pytest                           # Run all tests (85% branch coverage enforced)
 pytest tests/test_tools.py::test_name -x  # Single test
-ruff check .                     # Lint
-ruff format .                    # Format
-mypy --strict proto_client       # Type check
+ruff check . && ruff format --check .     # Lint
+mypy --strict proto_client               # Type check
 
 # Regenerate sync runs code from async source
 python scripts/gen_sync.py

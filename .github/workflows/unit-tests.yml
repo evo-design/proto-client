@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: uv pip install --system -e ".[dev]"
     - name: Run tests with coverage
-      run: make test
+      run: pytest -q --cov=proto_client --cov-report=term-missing --cov-report=xml:coverage.xml
     - name: Coverage summary
       if: always()
       run: |

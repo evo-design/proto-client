@@ -125,7 +125,11 @@ ban-relative-imports = "all"
 docstring-code-format = true
 
 [tool.coverage.run]
+branch = true
 omit = ["proto_client/_async/*"]
+
+[tool.coverage.report]
+fail_under = 85
 
 [tool.mypy]
 python_version = "3.10"
