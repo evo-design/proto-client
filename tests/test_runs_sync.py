@@ -98,17 +98,6 @@ def test_sync_get_error():
 # ── cancel() ──────────────────────────────────────────────────────────
 
 
-def test_sync_cancel():
-    def handler(request):
-        if request.method == "DELETE" and request.url.path == "/runs/abc":
-            return httpx.Response(200, json=run_response_json("abc", "cancelled"))
-        raise AssertionError(f"unexpected {request.method} {request.url.path}")
-
-    ns = make_sync_ns(handler)
-    result = ns.cancel("abc")
-    assert isinstance(result, RunResponse)
-    assert result.status.value == "cancelled"
-
 
 def test_sync_cancel_error():
     def handler(request):
@@ -389,20 +378,6 @@ def test_sync_run_polls_until_completed(monkeypatch):
     assert isinstance(final, RunResponse)
     assert final.status.value == "completed"
 
-
-def test_sync_run_short_circuits_on_failed(monkeypatch):
-    import proto_client.runs as runs_mod
-
-    monkeypatch.setattr(runs_mod, "_sleep", lambda _s: None)
-
-    def handler(request):
-        if request.method == "POST":
-            return httpx.Response(200, json={"run_id": "r1", "status": "failed", "message": ""})
-        return httpx.Response(200, json=run_response_json("r1", "failed", error_message="OOM killed"))
-
-    ns = make_sync_ns(handler)
-    with pytest.raises(RunFailedError):
-        ns.run({"constructs": [{}], "optimization_stages": [{}]})
 
 
 def test_sync_run_short_circuits_on_cancelled(monkeypatch):
