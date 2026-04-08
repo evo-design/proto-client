@@ -6,6 +6,11 @@
 
 Python SDK for Proto Bio APIs.
 
+## Related Repositories
+
+- [`proto-language`](https://github.com/evo-design/proto-language) – Core language framework (constraints, generators, optimizers)
+- [`proto-tools`](https://github.com/evo-design/proto-tools) – Bioinformatics tool wrappers with isolated environments
+
 ## Install
 
 ```bash
