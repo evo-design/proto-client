@@ -6,6 +6,11 @@
 
 Python SDK for Proto Bio APIs.
 
+## Related Repositories
+
+- [`proto-language`](https://github.com/evo-design/proto-language) – Core language framework (constraints, generators, optimizers)
+- [`proto-tools`](https://github.com/evo-design/proto-tools) – Bioinformatics tool wrappers with isolated environments
+
 ## Install
 
 ```bash
@@ -37,6 +42,36 @@ async with AsyncProtoClient(api_key="...") as client:
 ```
 
 Set `PROTO_API_KEY` to skip passing `api_key=` each time.
+
+## Using with AI Agents (MCP)
+
+Proto Bio exposes an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
+
+```bash
+pip install proto-client[mcp]
+```
+
+Add to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
+
+```json
+{
+  "mcpServers": {
+    "proto-bio": {
+      "command": "python",
+      "args": ["-m", "proto_client.mcp"],
+      "env": { "PROTO_API_KEY": "your-api-key" }
+    }
+  }
+}
+```
+
+The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `get_tool_schema`, `run_tool`) and optimization run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `cancel_run`, `get_run_results`).
+
+HTTP transport is also available for programmatic use:
+
+```bash
+python -m proto_client.mcp --transport http --port 9300
+```
 
 ## Development: async-first with unasync
 

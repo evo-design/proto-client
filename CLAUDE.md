@@ -58,6 +58,18 @@ Each namespace wraps an httpx client. The client manages two separate httpx clie
 - `ProtoAPIError` (base) → `ProtoAuthError` (401/403), `ProtoNotFoundError` (404), `ProtoConflictError` (409), `ProtoValidationError` (422), `ProtoRateLimitError` (429), `ProtoServerError` (5xx)
 - `RunFailedError` / `RunCancelledError` — raised by polling convenience methods
 
+### MCP Server
+
+`proto_client/mcp/` is a FastMCP server exposing Proto Bio capabilities to AI agents. It wraps `AsyncProtoClient` and registers 9 tools (list_tools, get_tool_schema, run_tool, list_components, validate_program, create_run, get_run_status, cancel_run, get_run_results).
+
+```bash
+pip install proto-client[mcp]
+python -m proto_client.mcp              # stdio transport (Claude Desktop/Code)
+python -m proto_client.mcp --transport http --port 9300  # HTTP transport
+```
+
+The server lifespan creates/closes an `AsyncProtoClient` that reads config from env vars (`PROTO_API_KEY`, etc.). Tool handlers are thin wrappers that delegate to client methods and serialize Pydantic models to dicts.
+
 ### Retry Logic
 
 `_http.py` implements transport-level retries. Retryable: `{429, 500, 502, 503, 504}` + network/timeout errors. Client errors (400, 401, 403, 404, 409, 422) are never retried. Default: 2 retries, 0.5s initial delay, exponential backoff with jitter.
