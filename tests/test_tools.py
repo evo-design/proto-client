@@ -27,10 +27,6 @@ def test_list_returns_tool_info(mock_http):
                 "key": "esmfold-prediction",
                 "service": "ESMFoldService",
                 "method": "predict",
-                "label": "ESMFold Prediction",
-                "category": "structure_prediction",
-                "description": "Predict protein structure",
-                "uses_gpu": True,
             }
         ]
     )

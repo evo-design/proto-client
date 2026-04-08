@@ -65,10 +65,6 @@ class ToolInfo(BaseModel):
     key: str
     service: str
     method: str
-    label: str
-    category: str
-    description: str
-    uses_gpu: bool
 
 
 class ToolSchema(BaseModel):
