@@ -31,6 +31,9 @@ Repository = "https://github.com/evo-design/proto-client"
 Issues = "https://github.com/evo-design/proto-client/issues"
 
 [project.optional-dependencies]
+mcp = [
+    "fastmcp>=2.0.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -39,7 +42,11 @@ dev = [
     "unasync>=0.5",
     "pytest-cov>=5.0",
     "pytest-timeout>=2.3",
+    "fastmcp>=2.0.0",
 ]
+
+[project.scripts]
+proto-client-mcp = "proto_client.mcp.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -97,6 +104,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"proto_client/mcp/tools.py" = [
+    "D417",     # ctx: Context is auto-injected by FastMCP, not a user-facing parameter
+]
 "tests/**/*.py" = [
     "S101",     # assert is the whole point of tests
     "S105",     # hardcoded password strings ok in test fixtures

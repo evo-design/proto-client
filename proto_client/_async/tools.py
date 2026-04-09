@@ -10,6 +10,9 @@ from pydantic import BaseModel, ValidationError
 
 from proto_client.errors import from_response
 from proto_client.models import (
+    BatchItemFailure,
+    BatchItemSuccess,
+    BatchResult,
     JobResponse,
     JobStatus,
     JobStatusResponse,
@@ -155,14 +158,17 @@ class AsyncToolsNamespace:
         *,
         output_model: type[T] | None = None,
         idempotency_key: str | None = None,
-    ) -> JobStatusResponse:
+    ) -> BatchResult:
         """Submit batch and poll until completion.
 
-        .. note:: The sync client already returns ``BatchResult`` with per-item
-           results. This async version will be updated in a follow-up PR.
+        Returns a :class:`~proto_client.models.BatchResult` with per-item
+        results. Each item is either a :class:`BatchItemSuccess` or
+        :class:`BatchItemFailure`.
+
+        Pass ``output_model`` to validate each succeeded item's output.
         """
         job_id = await self.submit_batch(tool_key, inputs_list, config, idempotency_key=idempotency_key)
-        return await self._wait(tool_key, job_id, poll_interval, timeout, output_model)
+        return await self._wait_batch(tool_key, job_id, poll_interval, timeout, output_model)
 
     async def _wait(
         self,
@@ -202,4 +208,51 @@ class AsyncToolsNamespace:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
+            await asyncio.sleep(min(poll_interval, remaining))
+
+    async def _wait_batch(
+        self,
+        tool_key: str,
+        job_id: str,
+        poll_interval: float,
+        timeout: float,
+        output_model: type[T] | None,
+    ) -> BatchResult:
+        """Poll until terminal status, then parse the flat items list into a BatchResult."""
+        deadline = time.monotonic() + timeout
+        while True:
+            status = await self.get(tool_key, job_id)
+            if status.status is JobStatus.completed:
+                if not isinstance(status.result, dict) or "items" not in status.result:
+                    raise TypeError(f"Batch job {job_id} missing 'items' in result")
+                try:
+                    batch = BatchResult.model_validate({"items": status.result["items"]})
+                except ValidationError as exc:
+                    raise TypeError(f"Batch job {job_id} returned unparseable items: {exc}") from exc
+                if output_model is not None:
+                    validated: _list[BatchItemSuccess | BatchItemFailure] = []
+                    for item in batch.items:
+                        if isinstance(item, BatchItemSuccess):
+                            try:
+                                parsed = output_model.model_validate(item.output)
+                            except ValidationError as exc:
+                                raise TypeError(
+                                    f"Batch item {item.index} does not conform to {output_model.__name__}: {exc}"
+                                ) from exc
+                            validated.append(item.model_copy(update={"output": parsed}))
+                        else:
+                            validated.append(item)
+                    batch = BatchResult(items=validated)
+                logger.info("Batch job %s completed with %d items", job_id, len(batch.items))
+                return batch
+            if status.status is JobStatus.failed:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
+                raise RuntimeError(f"Batch job {job_id} failed: {status.error}")
+            if status.status is JobStatus.cancelled:
+                logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
+                raise RuntimeError(f"Batch job {job_id} was cancelled")
+            logger.debug("Polling batch job %s (status=%s)", job_id, status.status.value)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"Batch job {job_id} did not complete within {timeout}s")
             await asyncio.sleep(min(poll_interval, remaining))

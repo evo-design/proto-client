@@ -43,7 +43,7 @@ async with AsyncProtoClient(api_key="...") as client:
 
 Set `PROTO_API_KEY` to skip passing `api_key=` each time.
 
-## MCP Server
+## Using with AI Agents (MCP)
 
 Proto Bio exposes an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
 
@@ -65,18 +65,27 @@ Add to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
 }
 ```
 
-The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `get_tool_schema`, `run_tool`) and optimization run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `cancel_run`, `get_run_results`).
+The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `run_tool`) and optimization run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `cancel_run`, `get_run_results`).
 
-HTTP transport is also available:
-
-```bash
-python -m proto_client.mcp --transport http --port 9300
-```
-
-## Testing
+A `proto-client-mcp` CLI script is also installed:
 
 ```bash
-pytest                    # All tests (90% branch coverage enforced)
-ruff check . && ruff format --check .   # Lint
-mypy --strict proto_client              # Type check
+proto-client-mcp                                       # stdio (default)
+proto-client-mcp --transport http --port 9300           # HTTP
 ```
+
+## Development: async-first with unasync
+
+`AsyncRunsNamespace` (in `proto_client/_async/runs.py`) is the source of
+truth. The sync `RunsNamespace` (`proto_client/runs.py`) is **generated**
+from it via [unasync](https://github.com/python-trio/unasync) — a
+token-level transform configured in `scripts/gen_sync.py`. The generated
+file is committed to the repo, and a CI check verifies it stays in sync.
+To regenerate manually:
+
+```bash
+python scripts/gen_sync.py
+```
+
+Do not edit `proto_client/runs.py` directly — your changes will be
+overwritten on the next regen.
