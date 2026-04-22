@@ -53,6 +53,15 @@ proto-client-mcp = "proto_client.mcp.__main__:main"
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
+# Session scope is required by the E2E suite: tests reuse the session-scoped
+# `e2e_async_client` fixture, and pytest-asyncio's per-item marker override
+# doesn't take effect early enough when the project-level default is
+# function. Setting session-scoped defaults here is a contract change for
+# async tests repo-wide — verified safe against MCP tests (tests/test_mcp/
+# all pass). Revisit if a future async unit test assumes a fresh per-test
+# loop (e.g. mutates loop-bound globals).
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 timeout = 5
 
 [tool.ruff]

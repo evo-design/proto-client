@@ -27,9 +27,9 @@ from proto_client.models import (
 
 def test_sync_create_and_get():
     def handler(request):
-        if request.method == "POST" and request.url.path == "/runs":
+        if request.method == "POST" and request.url.path == "/api/v1/runs":
             return httpx.Response(200, json={"run_id": "x", "status": "running", "message": ""})
-        if request.method == "GET" and request.url.path == "/runs/x":
+        if request.method == "GET" and request.url.path == "/api/v1/runs/x":
             return httpx.Response(200, json=run_response_json("x", "running"))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
@@ -113,7 +113,7 @@ def test_sync_cancel_error():
 
 def test_sync_run_stage_success():
     def handler(request):
-        if request.method == "POST" and request.url.path == "/runs/r1/stages/2/start":
+        if request.method == "POST" and request.url.path == "/api/v1/runs/r1/stages/2/start":
             return httpx.Response(200, json=run_response_json("r1", "running", current_stage=2))
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
@@ -139,7 +139,7 @@ def test_sync_run_stage_error():
 def test_sync_validate_ok():
     def handler(request):
         assert request.method == "POST"
-        assert request.url.path == "/validate"
+        assert request.url.path == "/api/v1/validate"
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
     ns = make_sync_ns(handler)
@@ -171,7 +171,7 @@ def test_sync_get_timepoints_all_stages():
 
     ns = make_sync_ns(handler)
     result = ns.get_timepoints("abc", offset=5, limit=100)
-    assert captured["path"] == "/runs/abc/timepoints"
+    assert captured["path"] == "/api/v1/runs/abc/timepoints"
     assert captured["query"] == {"limit": "100", "offset": "5"}
     assert isinstance(result, list)
     assert len(result) == 1
@@ -188,7 +188,7 @@ def test_sync_get_timepoints_single_stage_with_filter():
 
     ns = make_sync_ns(handler)
     ns.get_timepoints("abc", stage=1, timepoint=5, limit=10)
-    assert captured["path"] == "/runs/abc/stages/1/timepoints"
+    assert captured["path"] == "/api/v1/runs/abc/stages/1/timepoints"
     assert captured["query"] == {"limit": "10", "timepoint": "5"}
 
 
@@ -218,7 +218,7 @@ def test_sync_get_timepoints_stage_no_timepoint_filter():
 
     ns = make_sync_ns(handler)
     ns.get_timepoints("abc", stage=0)
-    assert captured["path"] == "/runs/abc/stages/0/timepoints"
+    assert captured["path"] == "/api/v1/runs/abc/stages/0/timepoints"
     assert "timepoint" not in captured["query"]
 
 
@@ -259,7 +259,7 @@ _OPTIMIZER_JSON = {
 
 def test_sync_list_constraints():
     def handler(request):
-        assert request.url.path == "/constraints"
+        assert request.url.path == "/api/v1/constraints"
         return httpx.Response(200, json=[_CONSTRAINT_JSON])
 
     ns = make_sync_ns(handler)
@@ -280,7 +280,7 @@ def test_sync_list_constraints_error():
 
 def test_sync_list_generators():
     def handler(request):
-        assert request.url.path == "/generators"
+        assert request.url.path == "/api/v1/generators"
         return httpx.Response(200, json=[_GENERATOR_JSON])
 
     ns = make_sync_ns(handler)
@@ -301,7 +301,7 @@ def test_sync_list_generators_error():
 
 def test_sync_list_optimizers():
     def handler(request):
-        assert request.url.path == "/optimizers"
+        assert request.url.path == "/api/v1/optimizers"
         return httpx.Response(200, json=[_OPTIMIZER_JSON])
 
     ns = make_sync_ns(handler)
@@ -448,7 +448,7 @@ def test_sync_run_with_webhook_params(monkeypatch):
     captured: dict[str, Any] = {}
 
     def handler(request):
-        if request.method == "POST" and request.url.path == "/runs":
+        if request.method == "POST" and request.url.path == "/api/v1/runs":
             captured["body"] = request.content.decode()
             return httpx.Response(200, json={"run_id": "r1", "status": "pending", "message": ""})
         return httpx.Response(200, json=run_response_json("r1", "completed"))
