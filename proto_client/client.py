@@ -35,7 +35,8 @@ class ProtoClient:
         Args:
             api_key: API key for authentication. Falls back to ``PROTO_API_KEY`` env var.
             tools_base_url: Base URL for the the tools API. Falls back to
-                ``PROTO_TOOLS_BASE_URL`` env var, then ``https://proto-tools.evodesign.org``.
+                ``PROTO_TOOLS_BASE_URL`` env var, then
+                ``https://proto-tools.evodesign.org``.
             runs_base_url: Base URL for the the runs API. Falls back to
                 ``PROTO_RUNS_BASE_URL`` env var, then ``https://proto-language.evodesign.org``.
             timeout: Default request timeout in seconds.
