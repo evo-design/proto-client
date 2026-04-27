@@ -13,11 +13,13 @@ from helpers import make_sync_ns, run_response_json
 
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
 from proto_client.models import (
+    CancelRunResponse,
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
     OptimizerSpec,
     RunResponse,
+    RunStatus,
     StageTimepointHistory,
     ValidationResponse,
 )
@@ -98,14 +100,53 @@ def test_sync_get_error():
 # ── cancel() ──────────────────────────────────────────────────────────
 
 
-def test_sync_cancel_error():
+def test_sync_cancel_ok():
     def handler(request):
-        return httpx.Response(400, json={"detail": "Cannot cancel run with status: completed"})
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/runs/r1/cancel"
+        return httpx.Response(
+            200,
+            json={
+                "message": "Run cancellation requested",
+                "status": "cancelled",
+                "details": {"already_cancelled": False, "task_terminated": True, "note": None},
+            },
+        )
+
+    ns = make_sync_ns(handler)
+    result = ns.cancel("r1")
+    assert isinstance(result, CancelRunResponse)
+    assert result.status == RunStatus.cancelled
+    assert result.details.task_terminated is True
+    assert result.details.already_cancelled is False
+
+
+def test_sync_cancel_already_cancelled_returns_200():
+    """Server returns 200 (not 400) for an already-cancelled run; details flags it."""
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "message": "Run was already cancelled",
+                "status": "cancelled",
+                "details": {"already_cancelled": True, "task_terminated": False, "note": "noop"},
+            },
+        )
+
+    ns = make_sync_ns(handler)
+    result = ns.cancel("done")
+    assert result.details.already_cancelled is True
+
+
+def test_sync_cancel_not_found():
+    def handler(request):
+        return httpx.Response(404, json={"detail": "Run not found"})
 
     ns = make_sync_ns(handler)
     with pytest.raises(ProtoAPIError) as exc_info:
-        ns.cancel("done")
-    assert exc_info.value.status_code == 400
+        ns.cancel("missing")
+    assert exc_info.value.status_code == 404
 
 
 # ── run_stage() ───────────────────────────────────────────────────────
@@ -139,7 +180,7 @@ def test_sync_run_stage_error():
 def test_sync_validate_ok():
     def handler(request):
         assert request.method == "POST"
-        assert request.url.path == "/api/v1/validate"
+        assert request.url.path == "/api/v1/programs/validate"
         return httpx.Response(200, json={"valid": True, "message": "ok"})
 
     ns = make_sync_ns(handler)

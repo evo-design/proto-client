@@ -14,6 +14,7 @@ import httpx
 
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
 from proto_client.models import (
+    CancelRunResponse,
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
@@ -81,20 +82,20 @@ class AsyncRunsNamespace:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
 
-    async def cancel(self, run_id: str) -> RunResponse:
-        """DELETE /api/v1/runs/{run_id} — cancel a running job.
+    async def cancel(self, run_id: str) -> CancelRunResponse:
+        """POST /api/v1/runs/{run_id}/cancel — cancel a running job.
 
-        Propagates the server's 400 if the run is already in a completed or
-        failed terminal state; callers need to know that cancelling a finished
-        run is a no-op, not silently swallowed.
+        Idempotent: cancelling a finished or already-cancelled run succeeds.
+        Inspect ``details.already_cancelled`` / ``details.task_terminated``
+        to tell a fresh cancel from a no-op.
         """
-        path = f"/api/v1/runs/{run_id}"
-        logger.debug("DELETE %s", path)
-        resp = await self._http.delete(path)
-        logger.debug("DELETE %s -> %d", path, resp.status_code)
+        path = f"/api/v1/runs/{run_id}/cancel"
+        logger.debug("POST %s", path)
+        resp = await self._http.post(path)
+        logger.debug("POST %s -> %d", path, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        return RunResponse.model_validate(resp.json())
+        return CancelRunResponse.model_validate(resp.json())
 
     async def run_stage(self, run_id: str, stage_index: int) -> RunResponse:
         """POST /api/v1/runs/{run_id}/stages/{stage_index}/start — run a single stage.
@@ -117,14 +118,14 @@ class AsyncRunsNamespace:
         self,
         program_data: dict[str, Any],
     ) -> ValidationResponse:
-        """POST /api/v1/validate — validate a program without creating a run.
+        """POST /api/v1/programs/validate — validate a program without creating a run.
 
         Raises ``ProtoValidationError`` (422) when the program is invalid;
         the response body carries a structured ``{"errors": [...]}`` detail.
         """
-        logger.debug("POST /api/v1/validate")
-        resp = await self._http.post("/api/v1/validate", json={"program_data": program_data})
-        logger.debug("POST /api/v1/validate -> %d", resp.status_code)
+        logger.debug("POST /api/v1/programs/validate")
+        resp = await self._http.post("/api/v1/programs/validate", json={"program_data": program_data})
+        logger.debug("POST /api/v1/programs/validate -> %d", resp.status_code)
         if resp.is_error:
             raise from_response(resp)
         return ValidationResponse.model_validate(resp.json())

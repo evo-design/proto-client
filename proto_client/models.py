@@ -29,6 +29,8 @@ __all__ = [
     "ToolInfo",
     "ToolSchema",
     # Runs / language API models
+    "CancelDetails",
+    "CancelRunResponse",
     "ConstraintResult",
     "ConstraintSpec",
     "ConstructResult",
@@ -283,12 +285,32 @@ class RunResponse(BaseModel):
 
 
 class ValidationResponse(BaseModel):
-    """Result from ``POST /validate``."""
+    """Result from ``POST /programs/validate``."""
 
     model_config = ConfigDict(frozen=True)
 
     valid: bool
     message: str
+
+
+class CancelDetails(BaseModel):
+    """Per-cancel-call detail flags returned alongside :class:`CancelRunResponse`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    already_cancelled: bool = False
+    task_terminated: bool = False
+    note: str | None = None
+
+
+class CancelRunResponse(BaseModel):
+    """Result from ``POST /runs/{run_id}/cancel``."""
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+    status: RunStatus
+    details: CancelDetails
 
 
 class ProposalResult(BaseModel):
