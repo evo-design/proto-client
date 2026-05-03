@@ -1,0 +1,31 @@
+# VCS
+.git
+
+# Secrets
+.env
+.env.*
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+.venvs
+build
+dist
+
+# Testing
+tests
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+
+# Repo metadata / CI
+.github
+.claude
+.gitignore
+CLAUDE.md
+scripts

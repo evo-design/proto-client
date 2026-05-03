@@ -9,6 +9,8 @@ def build_app() -> FastAPI:
     """Build the ASGI app: FastMCP HTTP transport at ``/mcp`` plus ``/health``."""
     mcp_app = mcp.http_app(path="/", stateless_http=True)
 
+    # Forward FastMCP's lifespan to the outer app. Starlette only invokes the
+    # root app's lifespan, not mounted sub-apps, so this initializes once.
     app = FastAPI(title="Proto Bio MCP", version="0.1.0", lifespan=mcp_app.lifespan)
     app.mount("/mcp", mcp_app)
 

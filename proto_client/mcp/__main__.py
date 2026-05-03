@@ -14,12 +14,7 @@ def main() -> None:
         help="Transport protocol (default: stdio)",
     )
     parser.add_argument("--host", default="127.0.0.1", help="HTTP host (default: 127.0.0.1)")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("PORT") or 9300),
-        help="HTTP port (default: $PORT or 9300)",
-    )
+    parser.add_argument("--port", type=int, default=None, help="HTTP port (default: $PORT or 9300)")
     args = parser.parse_args()
 
     if args.transport == "stdio":
@@ -28,11 +23,13 @@ def main() -> None:
         mcp.run()
         return
 
+    port = args.port if args.port is not None else int(os.environ.get("PORT") or 9300)
+
     import uvicorn
 
     from proto_client.mcp.app import build_app
 
-    uvicorn.run(build_app(), host=args.host, port=args.port)
+    uvicorn.run(build_app(), host=args.host, port=port)
 
 
 if __name__ == "__main__":
