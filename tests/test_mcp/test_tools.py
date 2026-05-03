@@ -74,23 +74,45 @@ async def test_lifespan_creates_and_closes_client():
     fake_client.aclose.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    ("argv", "expected_call"),
-    [
-        (["proto-client-mcp"], {}),
-        (
-            ["proto-client-mcp", "--transport", "http", "--host", "127.0.0.1", "--port", "8080"],
-            {"transport": "http", "host": "127.0.0.1", "port": 8080},
-        ),
-    ],
-)
-def test_main_dispatches_to_mcp_run(monkeypatch, argv, expected_call):
-    monkeypatch.setattr(sys, "argv", argv)
+def test_main_stdio_dispatches_to_mcp_run(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["proto-client-mcp"])
     with patch("proto_client.mcp.server.mcp") as mock_mcp:
         from proto_client.mcp.__main__ import main
 
         main()
-        mock_mcp.run.assert_called_once_with(**expected_call)
+        mock_mcp.run.assert_called_once_with()
+
+
+def test_main_http_serves_app_via_uvicorn(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["proto-client-mcp", "--transport", "http", "--host", "127.0.0.1", "--port", "8080"],
+    )
+    fake_app = object()
+    with (
+        patch("proto_client.mcp.app.build_app", return_value=fake_app) as mock_build,
+        patch("uvicorn.run") as mock_run,
+    ):
+        from proto_client.mcp.__main__ import main
+
+        main()
+        mock_build.assert_called_once_with()
+        mock_run.assert_called_once_with(fake_app, host="127.0.0.1", port=8080)
+
+
+# --- HTTP wrapper ---
+
+
+async def test_health_returns_ok():
+    from proto_client.mcp.app import build_app
+
+    app = build_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
 
 
 # --- Client lifecycle (_get_client branches on transport) ---
