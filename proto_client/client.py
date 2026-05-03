@@ -38,7 +38,8 @@ class ProtoClient:
                 ``PROTO_TOOLS_BASE_URL`` env var, then
                 ``https://proto-tools.evodesign.org``.
             runs_base_url: Base URL for the the runs API. Falls back to
-                ``PROTO_RUNS_BASE_URL`` env var, then ``https://proto-language.evodesign.org``.
+                ``PROTO_RUNS_BASE_URL`` env var, then
+                ``https://proto-language.evodesign.org``.
             timeout: Default request timeout in seconds.
             max_retries: Number of retry attempts for failed requests. Ignored if
                 *retry_config* is provided.
