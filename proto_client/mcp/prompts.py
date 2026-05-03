@@ -1,7 +1,8 @@
-"""MCP prompts — reusable templates for program design and component implementation.
+"""MCP prompts — reusable templates for program design, components, and tools.
 
 - ``design_program`` embeds the live component catalog fetched via the API.
 - ``implement_constraint`` and ``implement_generator`` are static code templates.
+- ``find_tool`` and ``tool_walkthrough`` guide an LLM through tool discovery.
 """
 
 import asyncio
@@ -180,6 +181,53 @@ def {func_name}_constraint(
     return [Message(template, role="user")]
 
 
+def find_tool_impl(task: str) -> list[Message]:
+    """Workflow prompt: pick the right bioinformatics tool for a task."""
+    template = f"""\
+Find the right bioinformatics tool for this task and explain how to call it.
+
+**Task:** {task}
+
+## Workflow
+
+1. **Survey** — call `list_categories` to see what kinds of tools exist.
+2. **Search** — call `search_tools(query="{task}")` for relevance-ranked candidates.
+3. **Inspect** — for the top 1-3 results, call `get_tool_schema(tool_key)` to see the
+   input/config/output contract.
+4. **Try** — call `get_tool_example(tool_key)` for a runnable input dict.
+5. **Recommend** — pick the best tool and show the user a Python snippet using
+   `client.tools.run(tool_key, inputs)` or the `run_tool` MCP tool.
+
+If no tool matches, say so explicitly rather than recommending a poor fit.
+"""
+    return [Message(template, role="user")]
+
+
+def tool_walkthrough_impl(tool_key: str) -> list[Message]:
+    """Workflow prompt: walk a user through a single bioinformatics tool."""
+    template = f"""\
+Give a complete walkthrough of `{tool_key}`.
+
+## Workflow
+
+1. Call `get_tool_schema("{tool_key}")` to fetch the input, config, and output
+   JSON Schemas.
+2. Call `get_tool_example("{tool_key}")` for a minimal runnable input.
+3. Call `get_tool_citation("{tool_key}")` for the BibTeX entry (may be null).
+4. Read `proto-tools://tools/{tool_key}` for an assembled metadata view (label,
+   schemas, example, citation, and links).
+
+Then present the walkthrough:
+
+- One-sentence purpose.
+- Required vs optional input fields, with types.
+- Config fields with their defaults.
+- A runnable Python example calling `client.tools.run("{tool_key}", inputs, config)`.
+- Citation, if available.
+"""
+    return [Message(template, role="user")]
+
+
 def implement_generator_impl(name: str, description: str, category: str = "mutation") -> list[Message]:
     """Code template for a custom generator class."""
     config_class = name.replace("-", " ").title().replace(" ", "") + "Config"
@@ -273,6 +321,16 @@ def implement_generator(name: str, description: str, category: str = "mutation")
     return implement_generator_impl(name, description, category)
 
 
+def find_tool(task: str) -> list[Message]:
+    """Workflow prompt: pick the right bioinformatics tool for a task."""
+    return find_tool_impl(task)
+
+
+def tool_walkthrough(tool_key: str) -> list[Message]:
+    """Workflow prompt: walk a user through a single bioinformatics tool."""
+    return tool_walkthrough_impl(tool_key)
+
+
 # --- Registration ---
 
 
@@ -299,3 +357,17 @@ def register_prompts(mcp: FastMCP) -> None:
             "proto-language conventions (ABC contract, decorator, categories)."
         ),
     )(implement_generator)
+
+    mcp.prompt(
+        description=(
+            "Workflow for finding the right bioinformatics tool for a user's task. "
+            "Guides through list_categories, search_tools, get_tool_schema, get_tool_example."
+        ),
+    )(find_tool)
+
+    mcp.prompt(
+        description=(
+            "Workflow for walking a user through a single bioinformatics tool — "
+            "schema, example input, citation, and a runnable Python snippet."
+        ),
+    )(tool_walkthrough)

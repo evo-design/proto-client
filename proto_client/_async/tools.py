@@ -16,6 +16,7 @@ from proto_client.models import (
     JobResponse,
     JobStatus,
     JobStatusResponse,
+    ToolExample,
     ToolInfo,
     ToolSchema,
 )
@@ -60,6 +61,16 @@ class AsyncToolsNamespace:
         if resp.is_error:
             raise from_response(resp)
         return ToolSchema.model_validate(resp.json())
+
+    async def get_example(self, tool_key: str) -> ToolExample:
+        """Get a tool's minimal valid input dict for documentation and quickstarts."""
+        path = f"/api/v1/tools/{tool_key}/example"
+        logger.debug("GET %s", path)
+        resp = await self._http.get(path)
+        logger.debug("GET %s -> %d", path, resp.status_code)
+        if resp.is_error:
+            raise from_response(resp)
+        return ToolExample.model_validate(resp.json())
 
     async def submit(
         self,

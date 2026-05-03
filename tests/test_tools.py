@@ -65,6 +65,14 @@ def test_get_schema(mock_http):
     assert schema.output["properties"]["pdb"]["type"] == "string"
 
 
+def test_get_example(mock_http):
+    mock_http.get.return_value = mock_response({"example_input": {"sequences": ["MKTL"]}})
+    example = ToolsNamespace(mock_http).get_example("esmfold-prediction")
+
+    mock_http.get.assert_called_once_with("/api/v1/tools/esmfold-prediction/example")
+    assert example.example_input == {"sequences": ["MKTL"]}
+
+
 def test_submit(mock_http: MagicMock) -> None:
     mock_http.post.return_value = mock_response({"job_id": "abc123", "status": "pending"}, 202)
     ns = ToolsNamespace(mock_http)

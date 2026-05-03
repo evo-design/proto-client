@@ -23,7 +23,13 @@ from proto_client.mcp.tools import (
     ComponentsResult,
     _get_client,
     _handle_proto_errors,
+    get_tool_citation_impl,
+    get_tool_example_impl,
+    list_categories_impl,
+    list_citations_impl,
     list_components_impl,
+    list_cpu_tools_impl,
+    list_gpu_tools_impl,
     register_tools,
     search_tools_impl,
 )
@@ -31,6 +37,7 @@ from proto_client.models import (
     ConstraintSpec,
     GeneratorSpec,
     OptimizerSpec,
+    ToolExample,
     ToolInfo,
 )
 
@@ -58,6 +65,7 @@ _TOOL_ESMFOLD = ToolInfo(
     category="structure_prediction",
     description="Predict protein structure from sequence",
     uses_gpu=True,
+    citation="@article{esm2,title={Evolutionary-scale prediction}}",
 )
 
 
@@ -248,6 +256,47 @@ async def test_list_components_gathers_all_three_registries(mock_client):
     mock_client.runs.list_optimizers.assert_awaited_once()
 
 
+# --- Tool discovery (categories, GPU/CPU, citation, example) ---
+
+
+async def test_list_categories_groups_by_category(mock_client):
+    mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
+    assert await list_categories_impl(mock_client) == {
+        "sequence_search": ["blast-search"],
+        "structure_prediction": ["esmfold-prediction"],
+    }
+
+
+async def test_list_gpu_and_cpu_tools_partition(mock_client):
+    mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
+    assert [t.key for t in await list_gpu_tools_impl(mock_client)] == ["esmfold-prediction"]
+    assert [t.key for t in await list_cpu_tools_impl(mock_client)] == ["blast-search"]
+
+
+async def test_get_tool_citation_returns_citation_or_none(mock_client):
+    mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
+    assert await get_tool_citation_impl(mock_client, "esmfold-prediction") == _TOOL_ESMFOLD.citation
+    # blast has no citation declared
+    assert await get_tool_citation_impl(mock_client, "blast-search") is None
+
+
+async def test_get_tool_citation_unknown_key_raises(mock_client):
+    mock_client.tools.list.return_value = [_TOOL_BLAST]
+    with pytest.raises(ProtoNotFoundError):
+        await get_tool_citation_impl(mock_client, "missing-tool")
+
+
+async def test_get_tool_example_returns_example_input(mock_client):
+    mock_client.tools.get_example.return_value = ToolExample(example_input={"sequences": ["MKTL"]})
+    assert await get_tool_example_impl(mock_client, "esmfold-prediction") == {"sequences": ["MKTL"]}
+    mock_client.tools.get_example.assert_awaited_once_with("esmfold-prediction")
+
+
+async def test_list_citations_filters_to_tools_with_citations(mock_client):
+    mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
+    assert await list_citations_impl(mock_client) == {"esmfold-prediction": _TOOL_ESMFOLD.citation}
+
+
 # --- Registration ---
 
 
@@ -260,6 +309,12 @@ async def test_register_tools_attaches_full_surface():
         "list_tools",
         "search_tools",
         "get_tool_schema",
+        "list_categories",
+        "list_gpu_tools",
+        "list_cpu_tools",
+        "get_tool_citation",
+        "get_tool_example",
+        "list_citations",
         "run_tool",
         "list_components",
         "validate_program",
@@ -271,8 +326,19 @@ async def test_register_tools_attaches_full_surface():
     }
 
 
-async def test_registered_handler_invokes_get_client():
-    """The registered handler routes through _get_client — verifies the wrapper wiring."""
+@pytest.mark.parametrize(
+    ("tool_name", "kwargs"),
+    [
+        ("list_tools", {}),
+        ("list_categories", {}),
+        ("list_gpu_tools", {}),
+        ("list_cpu_tools", {}),
+        ("get_tool_citation", {"tool_key": "blast-search"}),
+        ("list_citations", {}),
+    ],
+)
+async def test_registered_wrapper_routes_through_get_client(tool_name, kwargs):
+    """Each registered wrapper goes through _get_client and reaches its impl."""
     fake_client = AsyncMock()
     fake_client.tools.list.return_value = [_TOOL_BLAST]
 
@@ -282,12 +348,51 @@ async def test_registered_handler_invokes_get_client():
 
     fresh_mcp = FastMCP("test-server")
     register_tools(fresh_mcp)
-    list_tools_tool = next(t for t in await fresh_mcp.list_tools() if t.name == "list_tools")
+    handler = next(t for t in await fresh_mcp.list_tools() if t.name == tool_name)
 
     with patch("proto_client.mcp.tools._get_client", fake_get_client):
-        await list_tools_tool.fn(ctx=MagicMock())
+        await handler.fn(ctx=MagicMock(), **kwargs)
 
-    fake_client.tools.list.assert_awaited_once()
+    fake_client.tools.list.assert_awaited()
+
+
+async def test_registered_get_tool_example_calls_get_example():
+    """get_tool_example wrapper routes through client.tools.get_example, not list."""
+    fake_client = AsyncMock()
+    fake_client.tools.get_example.return_value = ToolExample(example_input={"x": 1})
+
+    @asynccontextmanager
+    async def fake_get_client(_ctx):
+        yield fake_client
+
+    fresh_mcp = FastMCP("test-server")
+    register_tools(fresh_mcp)
+    handler = next(t for t in await fresh_mcp.list_tools() if t.name == "get_tool_example")
+
+    with patch("proto_client.mcp.tools._get_client", fake_get_client):
+        result = await handler.fn(ctx=MagicMock(), tool_key="esmfold-prediction")
+
+    assert result == {"x": 1}
+    fake_client.tools.get_example.assert_awaited_once_with("esmfold-prediction")
+
+
+# --- New prompt impls ---
+
+
+def test_find_tool_impl_embeds_task_in_template():
+    from proto_client.mcp.prompts import find_tool_impl
+
+    [msg] = find_tool_impl("predict protein structure")
+    assert "predict protein structure" in msg.content.text
+    assert "search_tools" in msg.content.text
+
+
+def test_tool_walkthrough_impl_embeds_tool_key():
+    from proto_client.mcp.prompts import tool_walkthrough_impl
+
+    [msg] = tool_walkthrough_impl("esmfold-prediction")
+    assert "esmfold-prediction" in msg.content.text
+    assert "get_tool_schema" in msg.content.text
 
 
 # --- Error mapping ---

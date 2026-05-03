@@ -215,6 +215,44 @@ async def get_tool_schema_impl(client: AsyncProtoClient, tool_key: str) -> ToolS
     return await client.tools.get_schema(tool_key)
 
 
+async def list_categories_impl(client: AsyncProtoClient) -> dict[str, list[str]]:
+    """Group tool keys by category."""
+    grouped: dict[str, list[str]] = {}
+    for tool in await client.tools.list():
+        grouped.setdefault(tool.category, []).append(tool.key)
+    for keys in grouped.values():
+        keys.sort()
+    return dict(sorted(grouped.items()))
+
+
+async def list_gpu_tools_impl(client: AsyncProtoClient) -> list[ToolInfo]:
+    """Tools that require GPU compute."""
+    return [t for t in await client.tools.list() if t.uses_gpu]
+
+
+async def list_cpu_tools_impl(client: AsyncProtoClient) -> list[ToolInfo]:
+    """Tools that run on CPU."""
+    return [t for t in await client.tools.list() if not t.uses_gpu]
+
+
+async def get_tool_citation_impl(client: AsyncProtoClient, tool_key: str) -> str | None:
+    """BibTeX citation for a tool, or ``None`` if not declared."""
+    for tool in await client.tools.list():
+        if tool.key == tool_key:
+            return tool.citation
+    raise ProtoNotFoundError(f"Unknown tool '{tool_key}'", status_code=404)
+
+
+async def get_tool_example_impl(client: AsyncProtoClient, tool_key: str) -> dict[str, Any] | None:
+    """Minimal valid input dict for a tool, or ``None`` if not declared."""
+    return (await client.tools.get_example(tool_key)).example_input
+
+
+async def list_citations_impl(client: AsyncProtoClient) -> dict[str, str]:
+    """Map every tool that ships a citation to its BibTeX entry."""
+    return {tool.key: tool.citation for tool in await client.tools.list() if tool.citation}
+
+
 async def run_tool_impl(
     client: AsyncProtoClient,
     tool_key: str,
@@ -305,6 +343,48 @@ async def get_tool_schema(tool_key: str, ctx: Context) -> ToolSchema:
     """Fetch input/config/output JSON Schemas for a tool."""
     async with _get_client(ctx) as client:
         return await get_tool_schema_impl(client, tool_key)
+
+
+@_handle_proto_errors
+async def list_categories(ctx: Context) -> dict[str, list[str]]:
+    """Group tool keys by category."""
+    async with _get_client(ctx) as client:
+        return await list_categories_impl(client)
+
+
+@_handle_proto_errors
+async def list_gpu_tools(ctx: Context) -> list[ToolInfo]:
+    """List tools that require GPU compute."""
+    async with _get_client(ctx) as client:
+        return await list_gpu_tools_impl(client)
+
+
+@_handle_proto_errors
+async def list_cpu_tools(ctx: Context) -> list[ToolInfo]:
+    """List tools that run on CPU."""
+    async with _get_client(ctx) as client:
+        return await list_cpu_tools_impl(client)
+
+
+@_handle_proto_errors
+async def get_tool_citation(tool_key: str, ctx: Context) -> str | None:
+    """Get a tool's BibTeX citation."""
+    async with _get_client(ctx) as client:
+        return await get_tool_citation_impl(client, tool_key)
+
+
+@_handle_proto_errors
+async def get_tool_example(tool_key: str, ctx: Context) -> dict[str, Any] | None:
+    """Get a tool's minimal valid input dict."""
+    async with _get_client(ctx) as client:
+        return await get_tool_example_impl(client, tool_key)
+
+
+@_handle_proto_errors
+async def list_citations(ctx: Context) -> dict[str, str]:
+    """Map every tool with a citation to its BibTeX entry."""
+    async with _get_client(ctx) as client:
+        return await list_citations_impl(client)
 
 
 @_handle_proto_errors
@@ -402,6 +482,39 @@ def register_tools(mcp: FastMCP) -> None:
         description="Get the input, config, and output JSON Schemas for a tool.",
         annotations={"readOnlyHint": True},
     )(get_tool_schema)
+
+    mcp.tool(
+        description="Group tool keys by category. Useful for narrowing search before list_tools.",
+        annotations={"readOnlyHint": True},
+    )(list_categories)
+
+    mcp.tool(
+        description="List tools that require GPU compute.",
+        annotations={"readOnlyHint": True},
+    )(list_gpu_tools)
+
+    mcp.tool(
+        description="List tools that run on CPU.",
+        annotations={"readOnlyHint": True},
+    )(list_cpu_tools)
+
+    mcp.tool(
+        description="Get a tool's BibTeX citation, or null if the tool ships no citation.",
+        annotations={"readOnlyHint": True},
+    )(get_tool_citation)
+
+    mcp.tool(
+        description=(
+            "Get a tool's minimal valid input as a dict — useful for quickstarts and "
+            "as a template before building a real input from the schema."
+        ),
+        annotations={"readOnlyHint": True},
+    )(get_tool_example)
+
+    mcp.tool(
+        description="Map every tool with a citation to its BibTeX entry.",
+        annotations={"readOnlyHint": True},
+    )(list_citations)
 
     mcp.tool(
         description=(

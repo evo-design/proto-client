@@ -1,13 +1,17 @@
-"""MCP resources — markdown documentation for proto-language components.
+"""MCP resources — rendered views over registry/API metadata.
 
-Three URI templates:
+These are not the human-authored docs site. Each
+handler fetches data via ``AsyncProtoClient`` and formats the live registry
+response so an MCP client can read it inline.
 
-- ``bio://constraints/{key}``
-- ``bio://generators/{key}``
-- ``bio://optimizers/{key}``
+Six URI templates:
 
-Each handler fetches the component list via ``AsyncProtoClient`` and renders
-the requested spec as markdown with the JSON Schema inlined.
+- ``bio://constraints/{key}`` — constraint spec + JSON Schema (markdown)
+- ``bio://generators/{key}`` — generator spec + JSON Schema (markdown)
+- ``bio://optimizers/{key}`` — optimizer spec + JSON Schema (markdown)
+- ``proto-tools://tools/{key}`` — tool metadata + schemas + example + citation (markdown)
+- ``proto-tools://schemas/{key}`` — input/config/output JSON Schemas (JSON)
+- ``proto-tools://citations/{key}`` — BibTeX citation (plain text)
 """
 
 import json
@@ -19,6 +23,7 @@ from fastmcp.exceptions import ResourceError
 from proto_client._async.client import AsyncProtoClient
 from proto_client.errors import ProtoNotFoundError
 from proto_client.mcp.tools import _get_client, _handle_proto_errors
+from proto_client.models import ToolInfo
 
 
 def _format_metadata(spec: Any) -> str:
@@ -88,28 +93,107 @@ async def optimizer_doc_impl(client: AsyncProtoClient, key: str) -> str:
     return _format_component_doc(spec, "optimizer")
 
 
+async def _find_tool(client: AsyncProtoClient, key: str) -> ToolInfo:
+    """Fetch the tool metadata for ``key`` or raise ProtoNotFoundError."""
+    for tool in await client.tools.list():
+        if tool.key == key:
+            return tool
+    raise ProtoNotFoundError(f"Unknown tool '{key}'", status_code=404)
+
+
+async def tool_doc_impl(client: AsyncProtoClient, key: str) -> str:
+    """Render full markdown docs for a tool: metadata + schemas + example + citation."""
+    tool = await _find_tool(client, key)
+    schema = await client.tools.get_schema(key)
+    example = (await client.tools.get_example(key)).example_input
+
+    lines = [
+        f"# {tool.label} (`{tool.key}`)",
+        f"Category: {tool.category} | {'GPU' if tool.uses_gpu else 'CPU'}",
+        "",
+        tool.description,
+        "",
+    ]
+    links: list[str] = []
+    if tool.docs_url:
+        links.append(f"[Docs]({tool.docs_url})")
+    if tool.github_url:
+        links.append(f"[GitHub]({tool.github_url})")
+    if tool.paper_url:
+        links.append(f"[Paper]({tool.paper_url})")
+    if tool.example_notebook_url:
+        links.append(f"[Example notebook]({tool.example_notebook_url})")
+    if links:
+        lines.extend([" · ".join(links), ""])
+
+    lines.append(f"## Input schema\n```json\n{json.dumps(schema.inputs, indent=2)}\n```\n")
+    lines.append(f"## Config schema\n```json\n{json.dumps(schema.config, indent=2)}\n```\n")
+    lines.append(f"## Output schema\n```json\n{json.dumps(schema.output, indent=2)}\n```\n")
+
+    if example is not None:
+        lines.append(f"## Example input\n```json\n{json.dumps(example, indent=2)}\n```\n")
+
+    if tool.citation:
+        lines.append(f"## Citation\n```bibtex\n{tool.citation}\n```")
+
+    return "\n".join(lines)
+
+
+async def tool_schema_resource_impl(client: AsyncProtoClient, key: str) -> str:
+    """Return a tool's JSON schemas as a single JSON document."""
+    schema = await client.tools.get_schema(key)
+    return json.dumps(schema.model_dump(mode="json"), indent=2)
+
+
+async def tool_citation_resource_impl(client: AsyncProtoClient, key: str) -> str:
+    """Return a tool's BibTeX citation, or a marker if not declared."""
+    tool = await _find_tool(client, key)
+    return tool.citation or f"% No citation declared for {tool.key}."
+
+
 # --- Resource handlers ---
 
 
 @_handle_proto_errors(error_cls=ResourceError)
 async def constraint_doc(key: str, ctx: Context) -> str:
-    """Render markdown documentation for one constraint by key."""
+    """Render the constraint spec + JSON Schema as markdown."""
     async with _get_client(ctx) as client:
         return await constraint_doc_impl(client, key)
 
 
 @_handle_proto_errors(error_cls=ResourceError)
 async def generator_doc(key: str, ctx: Context) -> str:
-    """Render markdown documentation for one generator by key."""
+    """Render the generator spec + JSON Schema as markdown."""
     async with _get_client(ctx) as client:
         return await generator_doc_impl(client, key)
 
 
 @_handle_proto_errors(error_cls=ResourceError)
 async def optimizer_doc(key: str, ctx: Context) -> str:
-    """Render markdown documentation for one optimizer by key."""
+    """Render the optimizer spec + JSON Schema as markdown."""
     async with _get_client(ctx) as client:
         return await optimizer_doc_impl(client, key)
+
+
+@_handle_proto_errors(error_cls=ResourceError)
+async def tool_doc(key: str, ctx: Context) -> str:
+    """Render tool metadata + schemas + example + citation as markdown."""
+    async with _get_client(ctx) as client:
+        return await tool_doc_impl(client, key)
+
+
+@_handle_proto_errors(error_cls=ResourceError)
+async def tool_schema_resource(key: str, ctx: Context) -> str:
+    """Return the tool's input/config/output JSON Schemas."""
+    async with _get_client(ctx) as client:
+        return await tool_schema_resource_impl(client, key)
+
+
+@_handle_proto_errors(error_cls=ResourceError)
+async def tool_citation_resource(key: str, ctx: Context) -> str:
+    """Return the tool's BibTeX citation (or a placeholder marker if none)."""
+    async with _get_client(ctx) as client:
+        return await tool_citation_resource_impl(client, key)
 
 
 # --- Registration ---
@@ -119,18 +203,36 @@ def register_resources(mcp: FastMCP) -> None:
     """Register MCP resources on the given FastMCP instance."""
     mcp.resource(
         "bio://constraints/{key}",
-        description="Markdown documentation for a registered constraint.",
+        description="Constraint spec + JSON Schema for one key, rendered as markdown.",
         mime_type="text/markdown",
     )(constraint_doc)
 
     mcp.resource(
         "bio://generators/{key}",
-        description="Markdown documentation for a registered generator.",
+        description="Generator spec + JSON Schema for one key, rendered as markdown.",
         mime_type="text/markdown",
     )(generator_doc)
 
     mcp.resource(
         "bio://optimizers/{key}",
-        description="Markdown documentation for a registered optimizer.",
+        description="Optimizer spec + JSON Schema for one key, rendered as markdown.",
         mime_type="text/markdown",
     )(optimizer_doc)
+
+    mcp.resource(
+        "proto-tools://tools/{key}",
+        description="Tool metadata + schemas + example + citation for one key, rendered as markdown.",
+        mime_type="text/markdown",
+    )(tool_doc)
+
+    mcp.resource(
+        "proto-tools://schemas/{key}",
+        description="Input/config/output JSON Schemas for one tool key.",
+        mime_type="application/json",
+    )(tool_schema_resource)
+
+    mcp.resource(
+        "proto-tools://citations/{key}",
+        description="BibTeX citation for one tool key.",
+        mime_type="text/plain",
+    )(tool_citation_resource)

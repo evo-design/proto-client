@@ -31,14 +31,20 @@ async def _lifespan(_app: FastMCP) -> AsyncIterator[dict[str, Any]]:
 mcp = FastMCP(
     name="proto-bio",
     instructions=(
-        "Proto Bio: a platform for bioinformatics tool execution and "
-        "biological sequence optimization. Use list_tools, search_tools, "
-        "or list_components to discover capabilities, get_tool_schema to "
-        "inspect a tool's input/output contract, then run_tool or "
-        "create_run to execute. Prebuilt prompts (design_program, "
-        "implement_constraint, implement_generator) and component-doc "
-        "resources (bio://constraints/{key}, bio://generators/{key}, "
-        "bio://optimizers/{key}) are also available."
+        "Proto Bio: a platform for bioinformatics tool execution and biological "
+        "sequence optimization. "
+        "Discover tools with list_tools, search_tools, list_categories, "
+        "list_gpu_tools, or list_cpu_tools; inspect with get_tool_schema, "
+        "get_tool_example, get_tool_citation, or list_citations; execute "
+        "with run_tool. "
+        "Discover proto-language components with list_components; design with "
+        "create_run / run_stage / get_run_status / get_run_results / cancel_run; "
+        "validate JSON with validate_program. "
+        "Prompts: design_program, implement_constraint, implement_generator, "
+        "find_tool, tool_walkthrough. "
+        "Resources: bio://constraints/{key}, bio://generators/{key}, "
+        "bio://optimizers/{key}, proto-tools://tools/{key}, "
+        "proto-tools://schemas/{key}, proto-tools://citations/{key}."
     ),
     lifespan=_lifespan,
 )

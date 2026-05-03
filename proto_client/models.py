@@ -26,6 +26,7 @@ __all__ = [
     "JobResponse",
     "JobStatus",
     "JobStatusResponse",
+    "ToolExample",
     "ToolInfo",
     "ToolSchema",
     # Runs / language API models
@@ -71,6 +72,26 @@ class ToolInfo(BaseModel):
     category: str
     description: str
     uses_gpu: bool
+    github_url: str | None = None
+    paper_url: str | None = None
+    image_url: str | None = None
+    organizations: list[str] | None = None
+    docs_url: str | None = None
+    citation: str | None = None
+    example_notebook_url: str | None = None
+    iterable_input_field: str | None = None
+    iterable_output_field: str | None = None
+
+
+class ToolExample(BaseModel):
+    """A tool's minimal valid input dict from ``GET /api/v1/tools/{key}/example``.
+
+    ``example_input`` is ``None`` when the tool's spec doesn't define one.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    example_input: dict[str, Any] | None = None
 
 
 class ToolSchema(BaseModel):
