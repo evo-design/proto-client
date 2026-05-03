@@ -1,17 +1,27 @@
 """MCP tool handlers wrapping :class:`~proto_client.AsyncProtoClient`.
 
-Each tool is a thin async wrapper around an ``AsyncProtoClient`` method.
-The ``AsyncProtoClient`` is injected via FastMCP's lifespan context —
-tool functions access it through ``ctx.lifespan_context["client"]``.
+Tools are top-level async functions decorated with :func:`_handle_proto_errors`
+and registered on a FastMCP instance via :func:`register_tools`.
+
+:func:`_get_client` yields the right client per call: a per-request client
+keyed to a Bearer token in the HTTP headers, otherwise the lifespan-managed
+client from ``ctx.lifespan_context``.
+
+``_impl`` functions take an explicit client so tests can exercise them
+with a mock without going through FastMCP.
 """
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Any
+from typing import Any, overload
 
+import httpx
 from fastmcp import Context, FastMCP
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import FastMCPError, ToolError
+from fastmcp.server.dependencies import get_http_request
+from pydantic import BaseModel, Field
 
 from proto_client._async.client import AsyncProtoClient
 from proto_client.errors import (
@@ -25,85 +35,141 @@ from proto_client.errors import (
     RunCancelledError,
     RunFailedError,
 )
-from proto_client.models import ToolInfo
+from proto_client.models import (
+    CancelRunResponse,
+    ConstraintSpec,
+    CreateRunResponse,
+    GeneratorSpec,
+    JobStatusResponse,
+    OptimizerSpec,
+    RunResponse,
+    StageTimepointHistory,
+    ToolInfo,
+    ToolSchema,
+    ValidationResponse,
+)
+
+# --- Client lifecycle ---
 
 
-def _get_client(ctx: Context) -> AsyncProtoClient:
-    """Extract the ``AsyncProtoClient`` from the lifespan context."""
+def _bearer_token_from_request() -> str | None:
+    """Return the Bearer token from the live HTTP request, or None."""
     try:
-        client: AsyncProtoClient = ctx.lifespan_context["client"]
-        return client
-    except KeyError:
-        raise RuntimeError("MCP server not initialized — client not found in lifespan context") from None
+        request = get_http_request()
+    except RuntimeError:
+        return None
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth[7:].strip()
+    return token or None
 
 
-# ---------------------------------------------------------------------------
-# Error mapping — ProtoAPIError subclasses → ToolError
-# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def _get_client(ctx: Context) -> AsyncIterator[AsyncProtoClient]:
+    """Yield an :class:`AsyncProtoClient` for one tool call.
+
+    Per-request when a Bearer token is in the HTTP headers (closed on exit),
+    otherwise the lifespan-managed client (FastMCP owns its lifecycle).
+    """
+    token = _bearer_token_from_request()
+    if token is not None:
+        async with AsyncProtoClient(api_key=token) as per_request_client:
+            yield per_request_client
+        return
+
+    try:
+        lifespan_client: AsyncProtoClient = ctx.lifespan_context["client"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "MCP server not initialized — no Bearer token in request and no client in lifespan context."
+        ) from exc
+    yield lifespan_client
+
+
+# --- Error mapping ---
 
 _F = Callable[..., Coroutine[Any, Any, Any]]
 
 
-def _handle_proto_errors(fn: _F) -> _F:
-    """Catch Proto API errors and re-raise as MCP ToolError with agent-friendly messages.
+@overload
+def _handle_proto_errors(fn: _F) -> _F: ...
+@overload
+def _handle_proto_errors(*, error_cls: type[FastMCPError]) -> Callable[[_F], _F]: ...
+def _handle_proto_errors(fn: _F | None = None, *, error_cls: type[FastMCPError] = ToolError) -> Any:
+    """Catch Proto API errors and re-raise as the given ``FastMCPError`` subclass.
 
-    Transport-level errors (httpx.ConnectError, httpx.ReadTimeout, etc.)
-    intentionally propagate uncaught as internal server errors.
+    Defaults to :class:`ToolError`. Pass ``error_cls=PromptError`` or
+    ``error_cls=ResourceError`` so the MCP client receives the
+    semantically-correct error type for each primitive kind.
     """
 
-    @wraps(fn)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        try:
-            return await fn(*args, **kwargs)
-        except ProtoAuthError as e:
-            raise ToolError(f"Authentication failed: {e.message}") from e
-        except ProtoRateLimitError as e:
-            msg = f"Rate limited. Retry after {e.retry_after}s" if e.retry_after else "Rate limited"
-            raise ToolError(msg) from e
-        except ProtoValidationError as e:
-            lines = [f"  {err.get('loc', '?')}: {err.get('msg', '?')}" for err in e.errors]
-            detail = "\n".join(lines) if lines else e.message
-            raise ToolError(f"Validation failed:\n{detail}") from e
-        except ProtoNotFoundError as e:
-            raise ToolError(f"Not found: {e.message}") from e
-        except ProtoConflictError as e:
-            raise ToolError(f"Conflict: {e.message}") from e
-        except ProtoServerError as e:
-            raise ToolError(f"Server error (retriable): {e.message}") from e
-        except (RunFailedError, RunCancelledError) as e:
-            raise ToolError(str(e)) from e
-        except TimeoutError as e:
-            raise ToolError(f"Timed out: {e}") from e
-        except ProtoAPIError as e:
-            raise ToolError(f"API error [{e.status_code}]: {e.message}") from e
+    def _decorate(target: _F) -> _F:
+        @wraps(target)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await target(*args, **kwargs)
+            except ProtoAuthError as e:
+                raise error_cls(f"Authentication failed: {e.message}") from e
+            except ProtoRateLimitError as e:
+                msg = f"Rate limited. Retry after {e.retry_after}s" if e.retry_after else "Rate limited"
+                raise error_cls(msg) from e
+            except ProtoValidationError as e:
+                lines = []
+                for err in e.errors:
+                    loc = err.get("loc", "?")
+                    loc_str = " → ".join(str(p) for p in loc) if isinstance(loc, (list, tuple)) else str(loc)
+                    lines.append(f"  {loc_str}: {err.get('msg', '?')}")
+                detail = "\n".join(lines) if lines else e.message
+                raise error_cls(f"Validation failed:\n{detail}") from e
+            except ProtoNotFoundError as e:
+                raise error_cls(f"Not found: {e.message}") from e
+            except ProtoConflictError as e:
+                raise error_cls(f"Conflict: {e.message}") from e
+            except ProtoServerError as e:
+                raise error_cls(f"Server error (retriable): {e.message}") from e
+            except (RunFailedError, RunCancelledError) as e:
+                raise error_cls(str(e)) from e
+            except TimeoutError as e:
+                raise error_cls(f"Timed out: {e}") from e
+            except ProtoAPIError as e:
+                raise error_cls(f"API error [{e.status_code}]: {e.message}") from e
+            except (httpx.NetworkError, httpx.TimeoutException) as e:
+                raise error_cls(f"Connection error: {e}") from e
 
-    return wrapper
+        return wrapper
+
+    if fn is not None:
+        return _decorate(fn)
+    return _decorate
 
 
-# ---------------------------------------------------------------------------
-# Tool handler functions (registered via register_tools below)
-# ---------------------------------------------------------------------------
+# --- Local result models ---
 
 
-@_handle_proto_errors
-async def list_tools(ctx: Context) -> list[dict[str, Any]]:
+class ComponentsResult(BaseModel):
+    """Bundled discovery result combining the three component-spec lists."""
+
+    constraints: list[ConstraintSpec] = Field(description="Available constraints with their config schemas.")
+    generators: list[GeneratorSpec] = Field(description="Available sequence/structure generators.")
+    optimizers: list[OptimizerSpec] = Field(description="Available optimization strategies.")
+
+
+# --- Tool implementations (testable directly with a mock client) ---
+
+
+async def list_tools_impl(client: AsyncProtoClient) -> list[ToolInfo]:
     """List all registered bioinformatics tools."""
-    client = _get_client(ctx)
-    tools = await client.tools.list()
-    return [t.model_dump(mode="json") for t in tools]
+    return await client.tools.list()
 
 
-@_handle_proto_errors
-async def search_tools(query: str, ctx: Context, max_results: int = 10) -> list[dict[str, Any]]:
-    """Search tools by keyword with relevance scoring.
-
-    Args:
-        query: Search query (e.g. 'protein structure', 'blast', 'esmfold').
-        max_results: Maximum results to return (default 10).
-    """
-    client = _get_client(ctx)
+async def search_tools_impl(
+    client: AsyncProtoClient,
+    query: str,
+    max_results: int = 10,
+) -> list[ToolInfo]:
+    """Search bioinformatics tools by keyword with relevance scoring."""
     all_tools = await client.tools.list()
-
     query_lower = query.strip().lower()
     terms = query_lower.split()
     if not terms:
@@ -119,7 +185,6 @@ async def search_tools(query: str, ctx: Context, max_results: int = 10) -> list[
 
         if key_lower == query_lower:
             score += 100
-
         for term in terms:
             if term == key_lower:
                 score += 20
@@ -132,7 +197,6 @@ async def search_tools(query: str, ctx: Context, max_results: int = 10) -> list[
             if term in desc_lower:
                 score += 1
 
-        # Bonus for matching the full multi-word query as a phrase
         if len(terms) > 1:
             if query_lower in desc_lower:
                 score += 5
@@ -143,19 +207,104 @@ async def search_tools(query: str, ctx: Context, max_results: int = 10) -> list[
             scored.append((score, tool.key, tool))
 
     scored.sort(key=lambda x: (-x[0], x[1]))
-    return [t.model_dump(mode="json") for _, _, t in scored[:max_results]]
+    return [t for _, _, t in scored[:max_results]]
+
+
+async def get_tool_schema_impl(client: AsyncProtoClient, tool_key: str) -> ToolSchema:
+    """Get input/config/output JSON schemas for a bioinformatics tool."""
+    return await client.tools.get_schema(tool_key)
+
+
+async def run_tool_impl(
+    client: AsyncProtoClient,
+    tool_key: str,
+    inputs: dict[str, Any],
+    config: dict[str, Any] | None = None,
+    timeout: float = 600.0,
+) -> JobStatusResponse:
+    """Execute a bioinformatics tool and poll to completion."""
+    return await client.tools.run(tool_key, inputs, config, timeout=timeout)
+
+
+async def list_components_impl(client: AsyncProtoClient) -> ComponentsResult:
+    """List all proto-language constraints, generators, and optimizers."""
+    constraints, generators, optimizers = await asyncio.gather(
+        client.runs.list_constraints(),
+        client.runs.list_generators(),
+        client.runs.list_optimizers(),
+    )
+    return ComponentsResult(constraints=constraints, generators=generators, optimizers=optimizers)
+
+
+async def validate_program_impl(client: AsyncProtoClient, program_data: dict[str, Any]) -> ValidationResponse:
+    """Validate a proto-language program without executing it."""
+    return await client.runs.validate(program_data)
+
+
+async def create_run_impl(
+    client: AsyncProtoClient,
+    program_data: dict[str, Any],
+    execute: bool = True,
+) -> CreateRunResponse:
+    """Submit an optimization run."""
+    return await client.runs.create(program_data, execute=execute)
+
+
+async def get_run_status_impl(client: AsyncProtoClient, run_id: str) -> RunResponse:
+    """Get current status of an optimization run."""
+    return await client.runs.get(run_id)
+
+
+async def cancel_run_impl(client: AsyncProtoClient, run_id: str) -> CancelRunResponse:
+    """Cancel a running optimization."""
+    return await client.runs.cancel(run_id)
+
+
+async def run_stage_impl(client: AsyncProtoClient, run_id: str, stage_index: int) -> RunResponse:
+    """Start a specific stage of a multi-stage optimization run."""
+    return await client.runs.run_stage(run_id, stage_index)
+
+
+async def get_run_results_impl(
+    client: AsyncProtoClient,
+    run_id: str,
+    stage: int | None = None,
+    timepoint: int | None = None,
+    offset: int | None = None,
+    limit: int = 100,
+) -> list[StageTimepointHistory]:
+    """Get optimization timepoint snapshots for a run."""
+    return await client.runs.get_timepoints(
+        run_id,
+        stage=stage,
+        timepoint=timepoint,
+        offset=offset,
+        limit=limit,
+    )
+
+
+# --- Tool handlers ---
 
 
 @_handle_proto_errors
-async def get_tool_schema(tool_key: str, ctx: Context) -> dict[str, Any]:
-    """Fetch schemas for a tool.
+async def list_tools(ctx: Context) -> list[ToolInfo]:
+    """List available bioinformatics tools."""
+    async with _get_client(ctx) as client:
+        return await list_tools_impl(client)
 
-    Args:
-        tool_key: Tool registry key (e.g. 'esmfold-prediction', 'blast-search').
-    """
-    client = _get_client(ctx)
-    schema = await client.tools.get_schema(tool_key)
-    return schema.model_dump(mode="json")
+
+@_handle_proto_errors
+async def search_tools(query: str, ctx: Context, max_results: int = 10) -> list[ToolInfo]:
+    """Search bioinformatics tools by keyword."""
+    async with _get_client(ctx) as client:
+        return await search_tools_impl(client, query, max_results)
+
+
+@_handle_proto_errors
+async def get_tool_schema(tool_key: str, ctx: Context) -> ToolSchema:
+    """Fetch input/config/output JSON Schemas for a tool."""
+    async with _get_client(ctx) as client:
+        return await get_tool_schema_impl(client, tool_key)
 
 
 @_handle_proto_errors
@@ -165,92 +314,52 @@ async def run_tool(
     ctx: Context,
     config: dict[str, Any] | None = None,
     timeout: float = 600.0,
-) -> dict[str, Any]:
-    """Execute a tool and poll to completion.
-
-    Args:
-        tool_key: Tool registry key (e.g. 'esmfold-prediction').
-        inputs: Input data matching the tool's Input schema.
-        config: Config data matching the tool's Config schema. Omit to use tool defaults.
-        timeout: Maximum seconds to wait for completion (default 600).
-    """
-    client = _get_client(ctx)
-    result = await client.tools.run(tool_key, inputs, config, timeout=timeout)
-    return result.model_dump(mode="json")
-
-
-# ---------------------------------------------------------------------------
-# Runs namespace
-# ---------------------------------------------------------------------------
+) -> JobStatusResponse:
+    """Execute a bioinformatics tool and poll to completion."""
+    async with _get_client(ctx) as client:
+        return await run_tool_impl(client, tool_key, inputs, config, timeout)
 
 
 @_handle_proto_errors
-async def list_components(ctx: Context) -> dict[str, list[dict[str, Any]]]:
+async def list_components(ctx: Context) -> ComponentsResult:
     """List all constraints, generators, and optimizers."""
-    client = _get_client(ctx)
-    constraints, generators, optimizers = await asyncio.gather(
-        client.runs.list_constraints(),
-        client.runs.list_generators(),
-        client.runs.list_optimizers(),
-    )
-    return {
-        "constraints": [c.model_dump(mode="json") for c in constraints],
-        "generators": [g.model_dump(mode="json") for g in generators],
-        "optimizers": [o.model_dump(mode="json") for o in optimizers],
-    }
+    async with _get_client(ctx) as client:
+        return await list_components_impl(client)
 
 
 @_handle_proto_errors
-async def validate_program(program_data: dict[str, Any], ctx: Context) -> dict[str, Any]:
-    """Validate a program.
-
-    Args:
-        program_data: The full program dict.
-    """
-    client = _get_client(ctx)
-    result = await client.runs.validate(program_data)
-    return result.model_dump(mode="json")
+async def validate_program(program_data: dict[str, Any], ctx: Context) -> ValidationResponse:
+    """Validate a program without executing it."""
+    async with _get_client(ctx) as client:
+        return await validate_program_impl(client, program_data)
 
 
 @_handle_proto_errors
-async def create_run(
-    program_data: dict[str, Any],
-    ctx: Context,
-    execute: bool = True,
-) -> dict[str, Any]:
-    """Create an optimization run.
-
-    Args:
-        program_data: The full program dict (same format as validate_program).
-        execute: Whether to start execution immediately (default True). Set to False to create idle.
-    """
-    client = _get_client(ctx)
-    result = await client.runs.create(program_data, execute=execute)
-    return result.model_dump(mode="json")
+async def create_run(program_data: dict[str, Any], ctx: Context, execute: bool = True) -> CreateRunResponse:
+    """Submit an optimization run."""
+    async with _get_client(ctx) as client:
+        return await create_run_impl(client, program_data, execute)
 
 
 @_handle_proto_errors
-async def get_run_status(run_id: str, ctx: Context) -> dict[str, Any]:
-    """Get current run status.
-
-    Args:
-        run_id: The UUID of the run.
-    """
-    client = _get_client(ctx)
-    result = await client.runs.get(run_id)
-    return result.model_dump(mode="json")
+async def get_run_status(run_id: str, ctx: Context) -> RunResponse:
+    """Get current run status."""
+    async with _get_client(ctx) as client:
+        return await get_run_status_impl(client, run_id)
 
 
 @_handle_proto_errors
-async def cancel_run(run_id: str, ctx: Context) -> dict[str, Any]:
-    """Cancel an in-progress run.
+async def cancel_run(run_id: str, ctx: Context) -> CancelRunResponse:
+    """Cancel an in-progress run."""
+    async with _get_client(ctx) as client:
+        return await cancel_run_impl(client, run_id)
 
-    Args:
-        run_id: The UUID of the run.
-    """
-    client = _get_client(ctx)
-    result = await client.runs.cancel(run_id)
-    return result.model_dump(mode="json")
+
+@_handle_proto_errors
+async def run_stage(run_id: str, stage_index: int, ctx: Context) -> RunResponse:
+    """Start a specific stage of a multi-stage run."""
+    async with _get_client(ctx) as client:
+        return await run_stage_impl(client, run_id, stage_index)
 
 
 @_handle_proto_errors
@@ -261,58 +370,44 @@ async def get_run_results(
     timepoint: int | None = None,
     offset: int | None = None,
     limit: int = 100,
-) -> list[dict[str, Any]]:
-    """Get optimization timepoints for a run.
-
-    Args:
-        run_id: The UUID of the run.
-        stage: Filter by optimizer stage index (optional).
-        timepoint: Filter by timepoint index within a stage (requires stage).
-        offset: Number of timepoints to skip (optional, omitted by default).
-        limit: Maximum timepoints to return (default 100). Increase for large runs.
-    """
-    client = _get_client(ctx)
-    results = await client.runs.get_timepoints(run_id, stage=stage, timepoint=timepoint, offset=offset, limit=limit)
-    return [r.model_dump(mode="json") for r in results]
+) -> list[StageTimepointHistory]:
+    """Get optimization timepoint snapshots for a run."""
+    async with _get_client(ctx) as client:
+        return await get_run_results_impl(client, run_id, stage, timepoint, offset, limit)
 
 
-# ---------------------------------------------------------------------------
-# Registration — called by server.py after FastMCP is created
-# ---------------------------------------------------------------------------
+# --- Registration ---
 
 
 def register_tools(mcp: FastMCP) -> None:
-    """Register all tool handlers on the given FastMCP instance."""
+    """Register all MCP tool handlers on the given FastMCP instance."""
     mcp.tool(
         description=(
-            "List available bioinformatics tools. Returns tool metadata "
+            "List available bioinformatics tools. Returns metadata "
             "(key, label, category, description, uses_gpu). "
-            "Call get_tool_schema(tool_key) for full input/config/output JSON Schemas before calling run_tool."
+            "Call get_tool_schema before run_tool."
         ),
         annotations={"readOnlyHint": True},
     )(list_tools)
 
     mcp.tool(
         description=(
-            "Search for bioinformatics tools by keyword. Scores matches against "
-            "tool key, label, category, and description. Returns top results ranked by relevance."
+            "Search bioinformatics tools by keyword, ranked by relevance against "
+            "key/label/category/description. Returns the same metadata as list_tools."
         ),
         annotations={"readOnlyHint": True},
     )(search_tools)
 
     mcp.tool(
-        description=(
-            "Get the full input, config, and output JSON Schemas for a tool. "
-            "Use this to understand what parameters a tool accepts before calling run_tool."
-        ),
+        description="Get the input, config, and output JSON Schemas for a tool.",
         annotations={"readOnlyHint": True},
     )(get_tool_schema)
 
     mcp.tool(
         description=(
-            "Execute a bioinformatics tool and wait for the result. Submits "
-            "the job and polls until completion. Call get_tool_schema first "
-            "to see the expected input format."
+            "Execute a bioinformatics tool and wait for the result. Submits and polls until "
+            "completion. Call get_tool_schema first for the inputs/config formats. "
+            "Raises ToolError on timeout, cancellation, or tool failure."
         ),
         annotations={
             "readOnlyHint": False,
@@ -324,46 +419,56 @@ def register_tools(mcp: FastMCP) -> None:
 
     mcp.tool(
         description=(
-            "Discover all available constraints, generators, and optimizers "
-            "for building optimization programs. Returns component metadata "
-            "including keys, labels, descriptions, and config schemas."
+            "Discover available constraints, generators, and optimizers. "
+            "Returns component metadata (key, label, description, config_model)."
         ),
         annotations={"readOnlyHint": True},
     )(list_components)
 
     mcp.tool(
         description=(
-            "Validate an optimization program without executing it. Checks "
-            "structure, segment references, generator/constraint/optimizer "
-            "keys, and configuration validity."
+            "Validate an optimization program without executing it. "
+            "Returns ``{valid, message}``; ``valid`` is false on structural issues."
         ),
         annotations={"readOnlyHint": True},
     )(validate_program)
 
     mcp.tool(
         description=(
-            "Submit an optimization run. Returns a run_id for tracking. "
-            "Use get_run_status to monitor progress and get_run_results "
-            "to retrieve sequences and scores."
+            "Submit an optimization run. Returns ``{run_id, status, message}``. "
+            "Use get_run_status to poll and get_run_results to retrieve sequences."
         ),
         annotations={"destructiveHint": True},
     )(create_run)
 
     mcp.tool(
-        description="Check the status, stage progress, and timing of an optimization run.",
+        description=(
+            "Check status, stage progress, and timing of a run. "
+            "``status`` is one of pending|running|completed|failed|cancelled. "
+            "Once completed, fetch outputs with get_run_results."
+        ),
         annotations={"readOnlyHint": True},
     )(get_run_status)
 
     mcp.tool(
-        description="Cancel a running optimization.",
+        description=(
+            "Cancel a running optimization. ``details.already_cancelled`` is true if the run had already finished."
+        ),
         annotations={"destructiveHint": True},
     )(cancel_run)
 
     mcp.tool(
         description=(
-            "Get optimization results — sequences, constraint scores, and "
-            "proposal data. Returns timepoint snapshots for the requested "
-            "stage or all stages."
+            "Start a specific stage of a multi-stage run. Use after creating with "
+            "execute=False, or to re-run a failed stage."
+        ),
+        annotations={"destructiveHint": True},
+    )(run_stage)
+
+    mcp.tool(
+        description=(
+            "Get optimization results — sequences, constraint scores, and proposal data. "
+            "Filter by stage/timepoint; paginate via offset/limit."
         ),
         annotations={"readOnlyHint": True},
     )(get_run_results)

@@ -1,8 +1,8 @@
 """FastMCP server exposing Proto Bio APIs to MCP-compatible AI clients.
 
-The server wraps :class:`~proto_client.AsyncProtoClient` and exposes its
-methods as MCP tools. Both stdio and HTTP transports are supported via the
-CLI in ``__main__.py``.
+Wraps :class:`~proto_client.AsyncProtoClient` and exposes its methods as MCP
+tools, prompts, and resources. Both stdio and HTTP transports are supported
+via the CLI in ``__main__.py``.
 """
 
 from collections.abc import AsyncIterator
@@ -35,21 +35,26 @@ mcp = FastMCP(
         "biological sequence optimization. Use list_tools, search_tools, "
         "or list_components to discover capabilities, get_tool_schema to "
         "inspect a tool's input/output contract, then run_tool or "
-        "create_run to execute."
+        "create_run to execute. Prebuilt prompts (design_program, "
+        "implement_constraint, implement_generator) and component-doc "
+        "resources (bio://constraints/{key}, bio://generators/{key}, "
+        "bio://optimizers/{key}) are also available."
     ),
     lifespan=_lifespan,
 )
 
 
-def _register_tools() -> None:
-    """Register all MCP tool handlers on the ``mcp`` instance.
-
-    Kept as an explicit call to avoid circular imports — tools.py no longer
-    imports ``mcp`` at module level.
-    """
+def _register_all() -> None:
+    """Register tools, prompts, and resources on the ``mcp`` instance."""
+    # Imports kept inside the function to avoid circular references — the
+    # per-primitive modules don't reference ``mcp`` at module level.
+    from proto_client.mcp.prompts import register_prompts
+    from proto_client.mcp.resources import register_resources
     from proto_client.mcp.tools import register_tools
 
     register_tools(mcp)
+    register_prompts(mcp)
+    register_resources(mcp)
 
 
-_register_tools()
+_register_all()
