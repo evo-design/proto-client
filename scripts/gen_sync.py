@@ -19,6 +19,8 @@ intentionally diverge from their async counterparts.
 """
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import unasync  # type: ignore[import-untyped]
@@ -37,7 +39,10 @@ SYNC_TARGETS = ["runs.py"]
 ADDITIONAL_REPLACEMENTS = {
     "AsyncRunsNamespace": "RunsNamespace",
     "AsyncClient": "Client",  # httpx.AsyncClient → httpx.Client
+    "AsyncIterator": "Iterator",  # collections.abc.AsyncIterator
     "aclose": "close",
+    "aread": "read",  # httpx Response.aread → Response.read
+    "aiter_lines": "iter_lines",  # httpx streaming line iterator
     # `import asyncio` → `import time`; `asyncio.sleep` → `time.sleep`.
     # CAUTION: This replaces *all* `asyncio` tokens with `time`. Only add
     # asyncio usage that has a `time.*` sync equivalent (currently: sleep).
@@ -104,6 +109,15 @@ def main() -> None:
         if not content.startswith("# AUTO-GENERATED"):
             content = banner.format(name=name) + content
         out.write_text(content)
+
+    # Re-sort imports + format the generated files. The asyncio→time rename
+    # reorders `from X import` lines alphabetically, so the unasync output is
+    # almost always lint-dirty without this pass.
+    paths = [str(SYNC_DIR / name) for name in SYNC_TARGETS]
+    # Args are all constants (sys.executable + literals + paths from SYNC_TARGETS).
+    subprocess.run([sys.executable, "-m", "ruff", "check", "--fix", "--select", "I", *paths], check=True)  # noqa: S603
+    subprocess.run([sys.executable, "-m", "ruff", "format", *paths], check=True)  # noqa: S603
+
     print(f"Regenerated: {', '.join(SYNC_TARGETS)}")  # noqa: T201
 
 

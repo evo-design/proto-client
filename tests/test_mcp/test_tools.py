@@ -322,7 +322,9 @@ async def test_register_tools_attaches_full_surface():
         "get_run_status",
         "cancel_run",
         "run_stage",
-        "get_run_results",
+        "get_run_metrics",
+        "get_run_timepoints",
+        "get_run_timepoint",
     }
 
 

@@ -17,12 +17,28 @@ from proto_client.models import (
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
+    MetricPoint,
     OptimizerSpec,
+    PaginatedTimepoints,
     RunResponse,
     RunStatus,
-    StageTimepointHistory,
+    RunTimepointResponse,
+    StageMetrics,
     ValidationResponse,
 )
+
+
+def _timepoint_json(stage: int = 0, timepoint: int = 0) -> dict[str, Any]:
+    return {
+        "id": stage * 1000 + timepoint,
+        "run_id": "abc",
+        "optimizer_stage_idx": stage,
+        "timepoint": timepoint,
+        "best_result_idx": 0,
+        "results": [],
+        "created_at": "2026-04-05T12:00:00",
+    }
+
 
 # ── create() ──────────────────────────────────────────────────────────
 
@@ -199,68 +215,133 @@ def test_sync_validate_error():
     assert exc_info.value.status_code == 422
 
 
+# ── get_metrics() ────────────────────────────────────────────────────
+
+
+def test_sync_get_metrics_all_stages():
+    captured: dict[str, Any] = {}
+
+    def handler(request):
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json=[{"optimizer_stage_idx": 0, "points": []}])
+
+    ns = make_sync_ns(handler)
+    result = ns.get_metrics("abc")
+    assert captured["path"] == "/api/v1/runs/abc/metrics"
+    assert captured["query"] == {}
+    assert len(result) == 1
+    assert isinstance(result[0], StageMetrics)
+
+
+def test_sync_get_metrics_with_filters():
+    captured: dict[str, Any] = {}
+
+    def handler(request):
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "optimizer_stage_idx": 1,
+                    "points": [{"timepoint": 0, "result_idx": 0, "energy_score": -2.5}],
+                }
+            ],
+        )
+
+    ns = make_sync_ns(handler)
+    result = ns.get_metrics("abc", stage=1, resolution=200)
+    assert captured["query"] == {"optimizer_stage_idx": "1", "resolution": "200"}
+    assert result[0].points[0] == MetricPoint(timepoint=0, result_idx=0, energy_score=-2.5)
+
+
 # ── get_timepoints() ─────────────────────────────────────────────────
 
 
-def test_sync_get_timepoints_all_stages():
+def test_sync_get_timepoints_paginated():
     captured: dict[str, Any] = {}
 
     def handler(request):
         captured["path"] = request.url.path
         captured["query"] = dict(request.url.params)
-        return httpx.Response(200, json=[{"optimizer_stage_idx": 0, "timepoints": []}])
+        return httpx.Response(
+            200,
+            json={"items": [_timepoint_json()], "total": 1, "page": 0, "page_size": 50},
+        )
 
     ns = make_sync_ns(handler)
-    result = ns.get_timepoints("abc", offset=5, limit=100)
+    result = ns.get_timepoints("abc", stage=0, page=2, page_size=25)
     assert captured["path"] == "/api/v1/runs/abc/timepoints"
-    assert captured["query"] == {"limit": "100", "offset": "5"}
-    assert isinstance(result, list)
-    assert len(result) == 1
-    assert isinstance(result[0], StageTimepointHistory)
+    assert captured["query"] == {"optimizer_stage_idx": "0", "page": "2", "page_size": "25"}
+    assert isinstance(result, PaginatedTimepoints)
+    assert result.total == 1
 
 
-def test_sync_get_timepoints_single_stage_with_filter():
+def test_sync_get_timepoints_defaults():
     captured: dict[str, Any] = {}
 
     def handler(request):
-        captured["path"] = request.url.path
         captured["query"] = dict(request.url.params)
-        return httpx.Response(200, json=[{"optimizer_stage_idx": 1, "timepoints": []}])
+        return httpx.Response(200, json={"items": [], "total": 0, "page": 0, "page_size": 50})
 
-    ns = make_sync_ns(handler)
-    ns.get_timepoints("abc", stage=1, timepoint=5, limit=10)
-    assert captured["path"] == "/api/v1/runs/abc/stages/1/timepoints"
-    assert captured["query"] == {"limit": "10", "timepoint": "5"}
+    make_sync_ns(handler).get_timepoints("abc")
+    assert captured["query"] == {"page": "0", "page_size": "50"}
 
 
-def test_sync_get_timepoints_rejects_filter_without_stage():
-    ns = make_sync_ns(lambda r: httpx.Response(200, json=[]))
-    with pytest.raises(ValueError, match="timepoint filter"):
-        ns.get_timepoints("abc", timepoint=5)
+def test_sync_get_timepoints_error_propagates():
+    """Representative error-mapping test — non-2xx → ProtoAPIError."""
 
-
-def test_sync_get_timepoints_error():
-    def handler(request):
+    def handler(_):
         return httpx.Response(500, json={"detail": "DB error"})
 
-    ns = make_sync_ns(handler)
     with pytest.raises(ProtoAPIError):
-        ns.get_timepoints("abc")
+        make_sync_ns(handler).get_timepoints("abc")
 
 
-def test_sync_get_timepoints_stage_no_timepoint_filter():
-    """Stage is set but timepoint is None — no timepoint param in query."""
+# ── get_timepoint() ──────────────────────────────────────────────────
+
+
+def test_sync_get_timepoint():
     captured: dict[str, Any] = {}
 
     def handler(request):
         captured["path"] = request.url.path
-        captured["query"] = dict(request.url.params)
-        return httpx.Response(200, json=[{"optimizer_stage_idx": 0, "timepoints": []}])
+        return httpx.Response(200, json=_timepoint_json(stage=2, timepoint=7))
 
-    ns = make_sync_ns(handler)
-    ns.get_timepoints("abc", stage=0)
-    assert captured["path"] == "/api/v1/runs/abc/stages/0/timepoints"
-    assert "timepoint" not in captured["query"]
+    result = make_sync_ns(handler).get_timepoint("abc", 2, 7)
+    assert captured["path"] == "/api/v1/runs/abc/timepoints/2/7"
+    assert isinstance(result, RunTimepointResponse)
+    assert (result.optimizer_stage_idx, result.timepoint) == (2, 7)
+
+
+# ── iter_timepoints() ────────────────────────────────────────────────
+
+
+def test_sync_iter_timepoints_streams_ndjson():
+    import json
+
+    captured: dict[str, Any] = {}
+    payload = b"\n".join(json.dumps(_timepoint_json(timepoint=i)).encode() for i in range(3))
+
+    def handler(request):
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, content=payload, headers={"content-type": "application/x-ndjson"})
+
+    rows = list(make_sync_ns(handler).iter_timepoints("abc", stage=1))
+    assert captured["path"] == "/api/v1/runs/abc/timepoints/stream"
+    assert captured["query"] == {"optimizer_stage_idx": "1"}
+    assert [r.timepoint for r in rows] == [0, 1, 2]
+
+
+def test_sync_iter_timepoints_error_before_body():
+    """Stream errors must surface immediately, not silently yield zero rows."""
+
+    def handler(_):
+        return httpx.Response(404, json={"detail": "missing"})
+
+    with pytest.raises(ProtoAPIError):
+        list(make_sync_ns(handler).iter_timepoints("abc"))
 
 
 # ── list_constraints / list_generators / list_optimizers ──────────────

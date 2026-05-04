@@ -42,8 +42,10 @@ from proto_client.models import (
     GeneratorSpec,
     JobStatusResponse,
     OptimizerSpec,
+    PaginatedTimepoints,
     RunResponse,
-    StageTimepointHistory,
+    RunTimepointResponse,
+    StageMetrics,
     ToolInfo,
     ToolSchema,
     ValidationResponse,
@@ -303,22 +305,35 @@ async def run_stage_impl(client: AsyncProtoClient, run_id: str, stage_index: int
     return await client.runs.run_stage(run_id, stage_index)
 
 
-async def get_run_results_impl(
+async def get_run_metrics_impl(
     client: AsyncProtoClient,
     run_id: str,
     stage: int | None = None,
-    timepoint: int | None = None,
-    offset: int | None = None,
-    limit: int = 100,
-) -> list[StageTimepointHistory]:
-    """Get optimization timepoint snapshots for a run."""
-    return await client.runs.get_timepoints(
-        run_id,
-        stage=stage,
-        timepoint=timepoint,
-        offset=offset,
-        limit=limit,
-    )
+    resolution: int | None = None,
+) -> list[StageMetrics]:
+    """Get the decimated energy series for a run."""
+    return await client.runs.get_metrics(run_id, stage=stage, resolution=resolution)
+
+
+async def get_run_timepoints_impl(
+    client: AsyncProtoClient,
+    run_id: str,
+    stage: int | None = None,
+    page: int = 0,
+    page_size: int = 50,
+) -> PaginatedTimepoints:
+    """Get one page of full timepoint rows for a run."""
+    return await client.runs.get_timepoints(run_id, stage=stage, page=page, page_size=page_size)
+
+
+async def get_run_timepoint_impl(
+    client: AsyncProtoClient,
+    run_id: str,
+    stage: int,
+    timepoint: int,
+) -> RunTimepointResponse:
+    """Get a single full timepoint row by ``(stage, timepoint)`` coordinate."""
+    return await client.runs.get_timepoint(run_id, stage, timepoint)
 
 
 # --- Tool handlers ---
@@ -443,17 +458,40 @@ async def run_stage(run_id: str, stage_index: int, ctx: Context) -> RunResponse:
 
 
 @_handle_proto_errors
-async def get_run_results(
+async def get_run_metrics(
     run_id: str,
     ctx: Context,
     stage: int | None = None,
-    timepoint: int | None = None,
-    offset: int | None = None,
-    limit: int = 100,
-) -> list[StageTimepointHistory]:
-    """Get optimization timepoint snapshots for a run."""
+    resolution: int | None = None,
+) -> list[StageMetrics]:
+    """Get the decimated energy series for a run (cheap, chart-friendly)."""
     async with _get_client(ctx) as client:
-        return await get_run_results_impl(client, run_id, stage, timepoint, offset, limit)
+        return await get_run_metrics_impl(client, run_id, stage, resolution)
+
+
+@_handle_proto_errors
+async def get_run_timepoints(
+    run_id: str,
+    ctx: Context,
+    stage: int | None = None,
+    page: int = 0,
+    page_size: int = 50,
+) -> PaginatedTimepoints:
+    """Get one page of full timepoint rows for a run."""
+    async with _get_client(ctx) as client:
+        return await get_run_timepoints_impl(client, run_id, stage, page, page_size)
+
+
+@_handle_proto_errors
+async def get_run_timepoint(
+    run_id: str,
+    ctx: Context,
+    stage: int,
+    timepoint: int,
+) -> RunTimepointResponse:
+    """Get a single full timepoint row by ``(stage, timepoint)`` coordinate."""
+    async with _get_client(ctx) as client:
+        return await get_run_timepoint_impl(client, run_id, stage, timepoint)
 
 
 # --- Registration ---
@@ -549,7 +587,8 @@ def register_tools(mcp: FastMCP) -> None:
     mcp.tool(
         description=(
             "Submit an optimization run. Returns ``{run_id, status, message}``. "
-            "Use get_run_status to poll and get_run_results to retrieve sequences."
+            "Use get_run_status to poll and get_run_timepoints / get_run_metrics "
+            "to retrieve results."
         ),
         annotations={"destructiveHint": True},
     )(create_run)
@@ -558,7 +597,8 @@ def register_tools(mcp: FastMCP) -> None:
         description=(
             "Check status, stage progress, and timing of a run. "
             "``status`` is one of pending|running|completed|failed|cancelled. "
-            "Once completed, fetch outputs with get_run_results."
+            "Once completed, fetch outputs with get_run_timepoints (full rows) "
+            "or get_run_metrics (decimated chart series)."
         ),
         annotations={"readOnlyHint": True},
     )(get_run_status)
@@ -580,8 +620,24 @@ def register_tools(mcp: FastMCP) -> None:
 
     mcp.tool(
         description=(
-            "Get optimization results — sequences, constraint scores, and proposal data. "
-            "Filter by stage/timepoint; paginate via offset/limit."
+            "Get the decimated energy series for a run — cheap to fetch, ideal for "
+            "charts. Use get_run_timepoints for full per-step detail."
         ),
         annotations={"readOnlyHint": True},
-    )(get_run_results)
+    )(get_run_metrics)
+
+    mcp.tool(
+        description=(
+            "Get one page of full timepoint rows (sequences, constraint scores, "
+            "proposal data). Server-paginated; walk pages with the ``page`` arg."
+        ),
+        annotations={"readOnlyHint": True},
+    )(get_run_timepoints)
+
+    mcp.tool(
+        description=(
+            "Get a single full timepoint row by ``(stage, timepoint)`` coordinate. "
+            "Cheap direct lookup when you already know the step you want."
+        ),
+        annotations={"readOnlyHint": True},
+    )(get_run_timepoint)

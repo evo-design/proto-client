@@ -37,15 +37,17 @@ __all__ = [
     "ConstructResult",
     "CreateRunResponse",
     "GeneratorSpec",
+    "MetricPoint",
     "OptimizerSpec",
+    "PaginatedTimepoints",
     "ProposalResult",
     "ResultEntry",
     "RunResponse",
     "RunStatus",
     "RunTimepointResponse",
     "SegmentResult",
+    "StageMetrics",
     "StageResult",
-    "StageTimepointHistory",
     "ValidationResponse",
 ]
 
@@ -361,13 +363,34 @@ class RunTimepointResponse(BaseModel):
     created_at: datetime
 
 
-class StageTimepointHistory(BaseModel):
-    """Timepoint history for one optimizer stage."""
+class MetricPoint(BaseModel):
+    """A single decimated point — one ``(timepoint, result_idx, energy)`` row."""
+
+    model_config = ConfigDict(frozen=True)
+
+    timepoint: int
+    result_idx: int
+    energy_score: float | None = None
+
+
+class StageMetrics(BaseModel):
+    """Decimated energy series for one optimizer stage."""
 
     model_config = ConfigDict(frozen=True)
 
     optimizer_stage_idx: int
-    timepoints: list[RunTimepointResponse]
+    points: list[MetricPoint]
+
+
+class PaginatedTimepoints(BaseModel):
+    """One page of full timepoint rows plus the run-wide total."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[RunTimepointResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 class ConstraintSpec(BaseModel):
