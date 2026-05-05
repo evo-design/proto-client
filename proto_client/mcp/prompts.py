@@ -73,7 +73,7 @@ Proto Language is a constraint-based optimization framework for biological seque
   ],
   "optimization_stages": [
     {{
-      "generators": [{{"key": "...", "target": "s1", "config": {{}}}}],
+      "generators": [{{"key": "...", "targets": ["s1"], "config": {{}}}}],
       "constraints": [{{"key": "...", "targets": ["s1"], "config": {{}}}}],
       "optimizer": {{"method": "...", "config": {{}}}}
     }}
