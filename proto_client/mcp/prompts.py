@@ -281,18 +281,18 @@ class {class_name}(Generator):
     def __init__(self, config: {config_class}):
         super().__init__(config)
 
-    def sample(self) -> None:
+    def _sample(self) -> None:
         \"\"\"Generate new proposal sequences.\"\"\"
-        self._validate_generator()
-        segment = self._assigned_segment
+        segment = self.segment
         for seq in segment.proposal_sequences:
             
             pass
 ```
 
 ## Conventions
-- `sample()` modifies `proposal_sequences` **in-place**, returns None
-- Call `self._validate_generator()` at the start of `sample()`
+- Implement `_sample()`, not `sample()`; the base class validates assignment and calls `_sample()`
+- Use `self.segment` for single-target generators, or `self.segments` for tied multi-target generators
+- `_sample()` modifies `proposal_sequences` **in-place**, returns None
 - Use `@final` decorator to prevent subclassing
 - Categories: "mutation" (refine), "autoregressive" (generate), "inverse_folding" (structure→sequence)
 - File goes in `proto_language/language/generator/`
