@@ -15,7 +15,7 @@ uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 ## Commands
 
 ```bash
-pytest                           # Run all tests (90% branch coverage enforced)
+pytest                           # Run all tests (80% branch coverage enforced)
 pytest tests/test_tools.py::test_name -x  # Single test
 ruff check . && ruff format --check .     # Lint
 mypy --strict proto_client               # Type check
