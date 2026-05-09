@@ -8,6 +8,8 @@ import httpx
 
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
+from proto_client.errors import from_response
+from proto_client.models import MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
 
@@ -83,7 +85,20 @@ class ProtoClient:
 
         self.tools = ToolsNamespace(tools_http)
         self.runs = RunsNamespace(runs_http)
+        self._runs_http = runs_http
         self._clients: list[httpx.Client] = [tools_http, runs_http]
+
+    def me(self) -> MeResponse:
+        """Return the calling key's principal info from ``GET /api/v1/me``.
+
+        Source of truth for capability strings; intended to be called once
+        at agent / client boot. Raises the same typed errors as every other
+        endpoint (``ProtoAuthError`` on 401/403, etc.).
+        """
+        resp = self._runs_http.get("/api/v1/me")
+        if resp.is_error:
+            raise from_response(resp)
+        return MeResponse.model_validate(resp.json())
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""

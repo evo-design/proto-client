@@ -11,6 +11,8 @@ from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
 from proto_client._http import AsyncRetryTransport, RetryConfig
 from proto_client._version import VERSION
+from proto_client.errors import from_response
+from proto_client.models import MeResponse
 
 
 class AsyncProtoClient:
@@ -70,7 +72,20 @@ class AsyncProtoClient:
 
         self.tools = AsyncToolsNamespace(tools_http)
         self.runs = AsyncRunsNamespace(runs_http)
+        self._runs_http = runs_http
         self._clients: list[httpx.AsyncClient] = [tools_http, runs_http]
+
+    async def me(self) -> MeResponse:
+        """Return the calling key's principal info from ``GET /api/v1/me``.
+
+        Source of truth for capability strings; intended to be called once
+        at agent / client boot. Raises the same typed errors as every other
+        endpoint (``ProtoAuthError`` on 401/403, etc.).
+        """
+        resp = await self._runs_http.get("/api/v1/me")
+        if resp.is_error:
+            raise from_response(resp)
+        return MeResponse.model_validate(resp.json())
 
     async def aclose(self) -> None:
         # Close in parallel; return_exceptions ensures one failure doesn't

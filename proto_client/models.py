@@ -37,6 +37,7 @@ __all__ = [
     "ConstructResult",
     "CreateRunResponse",
     "GeneratorSpec",
+    "MeResponse",
     "MetricPoint",
     "OptimizerSpec",
     "PaginatedTimepoints",
@@ -314,6 +315,25 @@ class ValidationResponse(BaseModel):
 
     valid: bool
     message: str
+
+
+class MeResponse(BaseModel):
+    """Self-describing principal payload from ``GET /api/v1/me``.
+
+    The capability list is the server's source of truth — clients should
+    read this once at boot rather than re-exporting the same strings as
+    a separate env var. ``is_master`` is set when the request key matched
+    the dev master-key escape hatch on the server; master principals
+    bypass every capability check, so callers should treat ``is_master``
+    as "all capabilities granted" without inspecting the list.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    key_id: str
+    label: str
+    capabilities: list[str]
+    is_master: bool
 
 
 class CancelDetails(BaseModel):
