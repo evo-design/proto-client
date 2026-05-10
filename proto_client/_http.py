@@ -25,13 +25,12 @@ from proto_client.errors import parse_retry_after
 logger = logging.getLogger("proto_client._http")
 
 RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
-# NetworkError covers ConnectError/ReadError/WriteError/CloseError; TimeoutException
-# covers ConnectTimeout/ReadTimeout/WriteTimeout/PoolTimeout. Protocol-level failures
-# (ProtocolError, DecodingError, InvalidURL) stay non-retriable — retrying them would
-# just burn the budget on deterministic errors.
+# RemoteProtocolError is retriable (proxy closes stale keep-alives on long polls);
+# LocalProtocolError stays non-retriable (deterministic client-side bug).
 RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     httpx.NetworkError,
     httpx.TimeoutException,
+    httpx.RemoteProtocolError,
 )
 
 

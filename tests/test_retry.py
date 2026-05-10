@@ -196,3 +196,12 @@ def test_mixed_exception_then_retriable_status_then_success() -> None:
     assert _get(transport).status_code == 200
     assert counter.n == 3
     assert delays == [0.5, 1.0]
+
+
+def test_retries_on_remote_protocol_error_then_succeeds() -> None:
+    transport, counter, _ = _sync_transport(
+        [httpx.RemoteProtocolError("Server disconnected without sending a response."), _resp(200)],
+        initial_delay=0.01,
+    )
+    assert _get(transport).status_code == 200
+    assert counter.n == 2
