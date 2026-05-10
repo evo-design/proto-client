@@ -719,6 +719,27 @@ async def test_async_iter_logs_path_and_params():
     assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
+def test_sync_iter_logs_passes_tail_param():
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return ndjson_response(logs_payload(log_line(1)))
+
+    list(make_sync_ns(handler).iter_logs("r1", tail=600))
+    assert captured["query"].get("tail") == "600"
+    assert "since" not in captured["query"]
+
+
+def test_sync_get_logs_with_tail_forces_next_since_none():
+    """Even without a terminator (e.g. partial response), tail mode must not set a resume cursor."""
+    payload_no_terminator = logs_payload(log_line(10), log_line(11))
+    page = make_sync_ns(lambda _: ndjson_response(payload_no_terminator)).get_logs("r1", tail=10)
+    assert [r.seq for r in page.records] == [10, 11]
+    assert page.next_since is None
+    assert page.end_reason is None
+
+
 # ── runs.iter_logs / runs.get_logs — level + stream filters ───────────
 
 

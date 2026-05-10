@@ -41,8 +41,10 @@ def _iter_ndjson_records(
 def _collect_logs_page(
     items: Iterator[LogRecord | LogsEnd],
     since: int | None,
+    *,
+    tail: bool = False,
 ) -> LogsPage:
-    """Drain *items* into a :class:`LogsPage`."""
+    """Drain *items* into a :class:`LogsPage`. ``tail=True`` forces ``next_since=None``."""
     records: list[LogRecord] = []
     end_reason: Literal["completed", "truncated", "idle_timeout"] | None = None
     for item in items:
@@ -50,7 +52,7 @@ def _collect_logs_page(
             end_reason = item.reason
         else:
             records.append(item)
-    if end_reason is not None:
+    if tail or end_reason is not None:
         next_since: int | None = None
     elif records:
         next_since = records[-1].seq

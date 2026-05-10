@@ -227,6 +227,7 @@ class AsyncRunsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
+        tail: int | None = None,
         level: list[Level] | None = None,
         stream: list[StreamChannel] | None = None,
     ) -> AsyncIterator[LogRecord | LogsEnd]:
@@ -235,6 +236,9 @@ class AsyncRunsNamespace:
         Yields :class:`LogRecord` for each log line and a final
         :class:`LogsEnd` terminator (when the server emits one) before
         stopping. Discriminate via ``isinstance`` or the ``type`` field.
+
+        Pass ``tail=N`` for the last N records (ascending seq order, server-side
+        reverse scan). Mutually exclusive with ``since`` and ``follow``.
 
         Pass ``level`` and/or ``stream`` to filter server-side; both accept a
         list and round-trip as repeated query-string entries (e.g.
@@ -246,6 +250,8 @@ class AsyncRunsNamespace:
             params.append(("since", since))
         if limit is not None:
             params.append(("limit", limit))
+        if tail is not None:
+            params.append(("tail", tail))
         params.extend(("level", lv) for lv in level or [])
         params.extend(("stream", st) for st in stream or [])
         path = f"/api/v1/runs/{run_id}/logs"
@@ -258,16 +264,19 @@ class AsyncRunsNamespace:
         *,
         since: int | None = None,
         limit: int = 1000,
+        tail: int | None = None,
         level: list[Level] | None = None,
         stream: list[StreamChannel] | None = None,
     ) -> LogsPage:
         """Collect log history into a :class:`LogsPage`.
 
+        ``tail=N`` returns the last N records (ascending order). Mutually exclusive with ``since``.
         ``level`` and ``stream`` filter server-side — see :meth:`iter_logs`.
         """
         return await _acollect_logs_page(
-            self.iter_logs(run_id, since=since, follow=False, limit=limit, level=level, stream=stream),
+            self.iter_logs(run_id, since=since, follow=False, limit=limit, tail=tail, level=level, stream=stream),
             since,
+            tail=tail is not None,
         )
 
     # ------------------------------------------------------------- discovery
