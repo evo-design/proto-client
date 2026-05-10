@@ -22,6 +22,7 @@ from proto_client.models import (
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
+    Level,
     LogRecord,
     LogsEnd,
     LogsPage,
@@ -31,6 +32,7 @@ from proto_client.models import (
     RunStatus,
     RunTimepointResponse,
     StageMetrics,
+    StreamChannel,
     ValidationResponse,
 )
 
@@ -227,13 +229,27 @@ class RunsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
+        level: list[Level] | None = None,
+        stream: list[StreamChannel] | None = None,
     ) -> Iterator[LogRecord | LogsEnd]:
-        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
-        params: dict[str, Any] = {"follow": str(follow).lower()}
+        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows.
+
+        Yields :class:`LogRecord` for each log line and a final
+        :class:`LogsEnd` terminator (when the server emits one) before
+        stopping. Discriminate via ``isinstance`` or the ``type`` field.
+
+        Pass ``level`` and/or ``stream`` to filter server-side; both accept a
+        list and round-trip as repeated query-string entries (e.g.
+        ``level=["warning", "error"]`` becomes ``?level=warning&level=error``).
+        Older backends that don't recognise the params silently ignore them.
+        """
+        params: list[tuple[str, Any]] = [("follow", str(follow).lower())]
         if since is not None:
-            params["since"] = since
+            params.append(("since", since))
         if limit is not None:
-            params["limit"] = limit
+            params.append(("limit", limit))
+        params.extend(("level", lv) for lv in level or [])
+        params.extend(("stream", st) for st in stream or [])
         path = f"/api/v1/runs/{run_id}/logs"
         yield from _iter_ndjson_records(self._http, path, params)
 
@@ -243,10 +259,15 @@ class RunsNamespace:
         *,
         since: int | None = None,
         limit: int = 1000,
+        level: list[Level] | None = None,
+        stream: list[StreamChannel] | None = None,
     ) -> LogsPage:
-        """Collect log history into a :class:`LogsPage`."""
+        """Collect log history into a :class:`LogsPage`.
+
+        ``level`` and ``stream`` filter server-side — see :meth:`iter_logs`.
+        """
         return _collect_logs_page(
-            self.iter_logs(run_id, since=since, follow=False, limit=limit),
+            self.iter_logs(run_id, since=since, follow=False, limit=limit, level=level, stream=stream),
             since,
         )
 

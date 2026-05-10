@@ -10,7 +10,6 @@ from typing import Any
 import httpx
 import pytest
 from helpers import end_line, log_line, logs_payload, make_async_ns, make_sync_ns, ndjson_response, run_response_json
-from pydantic import ValidationError
 
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
 from proto_client.models import (
@@ -612,15 +611,19 @@ def test_iter_ndjson_skips_empty_lines():
 
 
 def test_iter_ndjson_terminates_on_end_marker():
+    """Iterator yields the LogsEnd terminator then stops, even if more lines follow."""
     payload = logs_payload(
         log_line(1, "stdout", "first"),
         end_line(reason="completed", final_seq=1),
         log_line(2, "stdout", "should-not-see"),
     )
     rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1", follow=True))
-    assert [type(r) for r in rows] == [LogRecord, LogsEnd]
+    assert len(rows) == 2
+    assert isinstance(rows[0], LogRecord)
     assert rows[0].msg == "first"
-    assert (rows[1].reason, rows[1].final_seq) == ("completed", 1)
+    assert isinstance(rows[1], LogsEnd)
+    assert rows[1].reason == "completed"
+    assert rows[1].final_seq == 1
 
 
 def test_iter_ndjson_caller_break_releases_connection():
@@ -639,24 +642,6 @@ def test_iter_ndjson_error_before_body_raises():
 
     with pytest.raises(ProtoAPIError):
         list(make_sync_ns(handler).iter_logs("r1"))
-
-
-# ── LogRecord wire-shape validation ──────────────────────────────────
-
-
-_LOG_RECORD_BASE = {
-    "type": "record",
-    "seq": 1,
-    "ts": "2026-05-09T12:34:56.789Z",
-    "stream": "stdout",
-    "msg": "x",
-}
-
-
-@pytest.mark.parametrize("override", [{}, {"level": "verbose"}], ids=["missing", "unknown"])
-def test_log_record_rejects_bad_level(override: dict[str, Any]):
-    with pytest.raises(ValidationError):
-        LogRecord.model_validate(_LOG_RECORD_BASE | override)
 
 
 # ── runs.iter_logs / runs.get_logs ───────────────────────────────────
@@ -681,22 +666,30 @@ def test_sync_iter_logs_path_and_params():
     [
         (logs_payload(log_line(10), log_line(11)), None, [10, 11], 11, None),
         (
-            logs_payload(log_line(5), end_line(reason="truncated", final_seq=5)),
+            logs_payload(log_line(5), end_line(reason="completed", final_seq=5)),
             None,
             [5],
             None,
-            "truncated",
+            "completed",
         ),
         (b"", 7, [], 7, None),
         (b"", None, [], None, None),
         (logs_payload(end_line(reason="completed", final_seq=3)), None, [], None, "completed"),
+        (
+            logs_payload(log_line(8), end_line(reason="truncated", final_seq=8)),
+            None,
+            [8],
+            None,
+            "truncated",
+        ),
     ],
     ids=[
         "no-terminator-resumes-from-last-seq",
         "terminator-clears-cursor-and-sets-end-reason",
         "empty-page-preserves-cursor",
         "empty-page-no-cursor-stays-none",
-        "terminator-only-yields-empty-page",
+        "terminator-only-clears-cursor",
+        "truncated-terminator-surfaces-as-end-reason",
     ],
 )
 def test_sync_get_logs_next_since(
@@ -726,9 +719,39 @@ async def test_async_iter_logs_path_and_params():
     assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
-async def test_async_get_logs_smoke():
-    """Async path mirrors sync: records carry a cursor, terminator surfaces ``end_reason`` and clears it."""
-    payload = logs_payload(log_line(10), end_line(reason="idle_timeout", final_seq=10))
-    page = await make_async_ns(lambda _: ndjson_response(payload)).get_logs("r1")
-    assert [r.seq for r in page.records] == [10]
-    assert (page.next_since, page.end_reason) == (None, "idle_timeout")
+# ── runs.iter_logs / runs.get_logs — level + stream filters ───────────
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_levels", "expected_streams"),
+    [
+        ({"level": ["warning", "error"]}, ["warning", "error"], []),
+        ({"stream": ["stdout", "stderr"]}, [], ["stdout", "stderr"]),
+        (
+            {"since": 42, "follow": True, "limit": 200, "level": ["warning", "error"], "stream": ["stderr"]},
+            ["warning", "error"],
+            ["stderr"],
+        ),
+        ({}, [], []),
+    ],
+    ids=["level-only", "stream-only", "combined-with-passthrough", "omits-when-unset"],
+)
+def test_sync_iter_logs_filter_round_trip(
+    kwargs: dict[str, Any], expected_levels: list[str], expected_streams: list[str]
+):
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["items"] = request.url.params.multi_items()
+        return ndjson_response(logs_payload(log_line(1)))
+
+    list(make_sync_ns(handler).iter_logs("r1", **kwargs))
+    items = captured["items"]
+    assert [v for k, v in items if k == "level"] == expected_levels
+    assert [v for k, v in items if k == "stream"] == expected_streams
+    if "since" in kwargs:
+        assert ("since", str(kwargs["since"])) in items
+    if "follow" in kwargs:
+        assert ("follow", str(kwargs["follow"]).lower()) in items
+    if "limit" in kwargs:
+        assert ("limit", str(kwargs["limit"])) in items

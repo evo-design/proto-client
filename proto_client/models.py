@@ -51,9 +51,11 @@ __all__ = [
     "StageResult",
     "ValidationResponse",
     # Logs (shared by runs + tools jobs)
+    "Level",
     "LogRecord",
     "LogsEnd",
     "LogsPage",
+    "StreamChannel",
 ]
 
 
@@ -466,16 +468,23 @@ class OptimizerSpec(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+#: RFC 5424 severity carried by every :class:`LogRecord`.
+Level = Literal["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]
+
+#: Source channel for a :class:`LogRecord` (orthogonal to ``Level``).
+StreamChannel = Literal["stdout", "stderr", "system"]
+
+
 class LogRecord(BaseModel):
-    """A single NDJSON log line. ``stream`` is the source channel; ``level`` is the RFC 5424 severity."""
+    """A single NDJSON log line. ``stream`` is the channel; ``level`` is the RFC 5424 severity (orthogonal)."""
 
     model_config = ConfigDict(frozen=True)
 
     type: Literal["record"] = "record"
     seq: int
     ts: datetime
-    stream: Literal["stdout", "stderr", "system"]
-    level: Literal["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]
+    stream: StreamChannel
+    level: Level
     msg: str
 
 

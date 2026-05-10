@@ -18,9 +18,11 @@ from proto_client.models import (
     JobResponse,
     JobStatus,
     JobStatusResponse,
+    Level,
     LogRecord,
     LogsEnd,
     LogsPage,
+    StreamChannel,
     ToolExample,
     ToolInfo,
     ToolSchema,
@@ -153,13 +155,20 @@ class AsyncToolsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
+        level: _list[Level] | None = None,
+        stream: _list[StreamChannel] | None = None,
     ) -> AsyncIterator[LogRecord | LogsEnd]:
-        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
-        params: dict[str, Any] = {"follow": str(follow).lower()}
+        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows + final :class:`LogsEnd`.
+
+        ``level`` / ``stream`` round-trip as repeated query-string entries (server-side filter).
+        """
+        params: _list[tuple[str, Any]] = [("follow", str(follow).lower())]
         if since is not None:
-            params["since"] = since
+            params.append(("since", since))
         if limit is not None:
-            params["limit"] = limit
+            params.append(("limit", limit))
+        params.extend(("level", lv) for lv in level or [])
+        params.extend(("stream", st) for st in stream or [])
         path = f"/api/v1/tools/{tool_key}/jobs/{job_id}/logs"
         async for item in _aiter_ndjson_records(self._http, path, params):
             yield item
@@ -171,10 +180,12 @@ class AsyncToolsNamespace:
         *,
         since: int | None = None,
         limit: int = 1000,
+        level: _list[Level] | None = None,
+        stream: _list[StreamChannel] | None = None,
     ) -> LogsPage:
-        """Collect job log history into a :class:`LogsPage`."""
+        """Collect job log history into a :class:`LogsPage`. ``level`` / ``stream`` filter server-side per :meth:`iter_job_logs`."""
         return await _acollect_logs_page(
-            self.iter_job_logs(tool_key, job_id, since=since, follow=False, limit=limit),
+            self.iter_job_logs(tool_key, job_id, since=since, follow=False, limit=limit, level=level, stream=stream),
             since,
         )
 

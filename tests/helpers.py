@@ -102,6 +102,7 @@ def log_line(
     *,
     level: str = "info",
 ) -> bytes:
+    """NDJSON line for a :class:`LogRecord`."""
     return json.dumps(
         {
             "type": "record",
@@ -115,6 +116,7 @@ def log_line(
 
 
 def end_line(reason: str = "completed", final_seq: int = 0) -> bytes:
+    """NDJSON terminator line for a :class:`LogsEnd`."""
     return json.dumps({"type": "end", "reason": reason, "final_seq": final_seq}).encode()
 
 

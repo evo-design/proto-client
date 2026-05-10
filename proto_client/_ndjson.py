@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 def _iter_ndjson_records(
     http: httpx.Client,
     path: str,
-    params: dict[str, Any],
+    params: list[tuple[str, Any]],
 ) -> Iterator[LogRecord | LogsEnd]:
-    """Stream NDJSON log items, yielding the :class:`LogsEnd` terminator (if any) then stopping."""
+    """Stream :class:`LogRecord` rows; yield the :class:`LogsEnd` terminator then stop."""
     logger.debug("GET %s (stream)", path)
     with http.stream("GET", path, params=params) as resp:
         logger.debug("GET %s -> %d", path, resp.status_code)
@@ -32,7 +32,7 @@ def _iter_ndjson_records(
             if not line:
                 continue
             payload = json.loads(line)
-            if payload["type"] == "end":
+            if payload.get("type") == "end":
                 yield LogsEnd.model_validate(payload)
                 return
             yield LogRecord.model_validate(payload)

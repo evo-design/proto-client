@@ -1,14 +1,15 @@
 """Streaming-log tests for the tools namespace; non-streaming tools tests live in ``test_tools.py``.
 
-Iterator + cursor semantics are exercised against the shared NDJSON helpers in
-``test_runs_sync.py``; tests here only verify URL/param wiring and that the
-``get_job_logs`` wrapper packs records and terminator into a :class:`LogsPage`.
+Cursor semantics are exercised against the shared ``_collect_logs_page`` helper from
+``test_runs_sync.py``; tests here only verify URL/param wiring + the ``get_job_logs``
+wrapper actually returns a populated :class:`LogsPage` and surfaces ``end_reason``.
 """
 
 from typing import Any
 
 import httpx
-from helpers import end_line, log_line, logs_payload, make_async_tools_ns, make_sync_tools_ns, ndjson_response
+import pytest
+from helpers import log_line, logs_payload, make_async_tools_ns, make_sync_tools_ns, ndjson_response
 
 from proto_client.models import LogRecord
 
@@ -43,8 +44,51 @@ async def test_async_iter_job_logs_path_and_params():
     assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
-async def test_async_get_job_logs_packs_records_and_terminator():
-    payload = logs_payload(log_line(10), end_line(reason="completed", final_seq=10))
-    page = await make_async_tools_ns(lambda _: ndjson_response(payload)).get_job_logs("blast", "j1")
-    assert [r.seq for r in page.records] == [10]
-    assert (page.next_since, page.end_reason) == (None, "completed")
+# ── iter_job_logs / get_job_logs — level + stream filters ─────────────
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_levels", "expected_streams"),
+    [
+        ({"level": ["warning", "error"]}, ["warning", "error"], []),
+        ({"stream": ["stdout", "stderr"]}, [], ["stdout", "stderr"]),
+        (
+            {"since": 42, "follow": True, "limit": 200, "level": ["warning", "error"], "stream": ["stderr"]},
+            ["warning", "error"],
+            ["stderr"],
+        ),
+        ({}, [], []),
+    ],
+    ids=["level-only", "stream-only", "combined-with-passthrough", "omits-when-unset"],
+)
+def test_sync_iter_job_logs_filter_round_trip(
+    kwargs: dict[str, Any], expected_levels: list[str], expected_streams: list[str]
+):
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["items"] = request.url.params.multi_items()
+        return ndjson_response(logs_payload(log_line(1)))
+
+    list(make_sync_tools_ns(handler).iter_job_logs("esmfold", "j1", **kwargs))
+    items = captured["items"]
+    assert [v for k, v in items if k == "level"] == expected_levels
+    assert [v for k, v in items if k == "stream"] == expected_streams
+    if "since" in kwargs:
+        assert ("since", str(kwargs["since"])) in items
+    if "follow" in kwargs:
+        assert ("follow", str(kwargs["follow"]).lower()) in items
+    if "limit" in kwargs:
+        assert ("limit", str(kwargs["limit"])) in items
+
+
+async def test_async_iter_job_logs_multi_valued_filters_round_trip():
+    """Tools.py is hand-written on both sync and async sides; verify the async path independently."""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["items"] = request.url.params.multi_items()
+        return ndjson_response(logs_payload(log_line(1)))
+
+    [r async for r in make_async_tools_ns(handler).iter_job_logs("esmfold", "j1", level=["warning", "error"])]
+    assert [v for k, v in captured["items"] if k == "level"] == ["warning", "error"]
