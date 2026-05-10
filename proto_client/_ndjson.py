@@ -3,14 +3,15 @@
 # `python scripts/gen_sync.py`.
 """Sync NDJSON streaming helpers — AUTO-GENERATED from proto_client/_async/_ndjson.py."""
 
+import json
 import logging
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
 from proto_client.errors import from_response
-from proto_client.models import LogRecord, LogsPage
+from proto_client.models import LogRecord, LogsEnd, LogsPage
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,8 @@ def _iter_ndjson_records(
     http: httpx.Client,
     path: str,
     params: dict[str, Any],
-) -> Iterator[LogRecord]:
-    """Stream :class:`LogRecord` rows; yields the ``system: __end__`` terminator then stops."""
+) -> Iterator[LogRecord | LogsEnd]:
+    """Stream NDJSON log items, yielding the :class:`LogsEnd` terminator (if any) then stopping."""
     logger.debug("GET %s (stream)", path)
     with http.stream("GET", path, params=params) as resp:
         logger.debug("GET %s -> %d", path, resp.status_code)
@@ -30,24 +31,29 @@ def _iter_ndjson_records(
         for line in resp.iter_lines():
             if not line:
                 continue
-            record = LogRecord.model_validate_json(line)
-            yield record
-            if record.stream == "system" and record.msg == "__end__":
+            payload = json.loads(line)
+            if payload["type"] == "end":
+                yield LogsEnd.model_validate(payload)
                 return
+            yield LogRecord.model_validate(payload)
 
 
-def _collect_logs_page(records_iter: Iterator[LogRecord], since: int | None) -> LogsPage:
-    """Drain *records_iter* into a :class:`LogsPage`. Server ``?since`` is exclusive, so resume cursor = ``last.seq``."""
+def _collect_logs_page(
+    items: Iterator[LogRecord | LogsEnd],
+    since: int | None,
+) -> LogsPage:
+    """Drain *items* into a :class:`LogsPage`."""
     records: list[LogRecord] = []
-    end_seen = False
-    for record in records_iter:
-        records.append(record)
-        if record.stream == "system" and record.msg == "__end__":
-            end_seen = True
-    if end_seen:
+    end_reason: Literal["completed", "truncated", "idle_timeout"] | None = None
+    for item in items:
+        if isinstance(item, LogsEnd):
+            end_reason = item.reason
+        else:
+            records.append(item)
+    if end_reason is not None:
         next_since: int | None = None
     elif records:
         next_since = records[-1].seq
     else:
         next_since = since
-    return LogsPage(records=records, next_since=next_since)
+    return LogsPage(records=records, next_since=next_since, end_reason=end_reason)

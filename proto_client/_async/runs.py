@@ -21,6 +21,7 @@ from proto_client.models import (
     CreateRunResponse,
     GeneratorSpec,
     LogRecord,
+    LogsEnd,
     LogsPage,
     OptimizerSpec,
     PaginatedTimepoints,
@@ -224,16 +225,16 @@ class AsyncRunsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
-    ) -> AsyncIterator[LogRecord]:
-        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows."""
+    ) -> AsyncIterator[LogRecord | LogsEnd]:
+        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
         params: dict[str, Any] = {"follow": str(follow).lower()}
         if since is not None:
             params["since"] = since
         if limit is not None:
             params["limit"] = limit
         path = f"/api/v1/runs/{run_id}/logs"
-        async for record in _aiter_ndjson_records(self._http, path, params):
-            yield record
+        async for item in _aiter_ndjson_records(self._http, path, params):
+            yield item
 
     async def get_logs(
         self,

@@ -18,6 +18,7 @@ from proto_client.models import (
     JobStatus,
     JobStatusResponse,
     LogRecord,
+    LogsEnd,
     LogsPage,
     ToolExample,
     ToolInfo,
@@ -151,8 +152,8 @@ class ToolsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
-    ) -> Iterator[LogRecord]:
-        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows."""
+    ) -> Iterator[LogRecord | LogsEnd]:
+        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
         params: dict[str, Any] = {"follow": str(follow).lower()}
         if since is not None:
             params["since"] = since

@@ -95,8 +95,27 @@ def make_sync_tools_ns(handler) -> ToolsNamespace:
     return ToolsNamespace(http)
 
 
-def log_line(seq: int, stream: str = "stdout", msg: str = "hello") -> bytes:
-    return json.dumps({"seq": seq, "ts": "2026-05-09T12:34:56.789Z", "stream": stream, "msg": msg}).encode()
+def log_line(
+    seq: int,
+    stream: str = "stdout",
+    msg: str = "hello",
+    *,
+    level: str = "info",
+) -> bytes:
+    return json.dumps(
+        {
+            "type": "record",
+            "seq": seq,
+            "ts": "2026-05-09T12:34:56.789Z",
+            "stream": stream,
+            "level": level,
+            "msg": msg,
+        }
+    ).encode()
+
+
+def end_line(reason: str = "completed", final_seq: int = 0) -> bytes:
+    return json.dumps({"type": "end", "reason": reason, "final_seq": final_seq}).encode()
 
 
 def logs_payload(*lines: bytes) -> bytes:

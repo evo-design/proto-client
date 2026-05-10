@@ -52,6 +52,7 @@ __all__ = [
     "ValidationResponse",
     # Logs (shared by runs + tools jobs)
     "LogRecord",
+    "LogsEnd",
     "LogsPage",
 ]
 
@@ -466,20 +467,33 @@ class OptimizerSpec(BaseModel):
 
 
 class LogRecord(BaseModel):
-    """A single NDJSON log line. ``stream == "system"`` carries lifecycle markers (``__end__``, ``__truncated__``)."""
+    """A single NDJSON log line. ``stream`` is the source channel; ``level`` is the RFC 5424 severity."""
 
     model_config = ConfigDict(frozen=True)
 
+    type: Literal["record"] = "record"
     seq: int
     ts: datetime
     stream: Literal["stdout", "stderr", "system"]
+    level: Literal["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]
     msg: str
 
 
+class LogsEnd(BaseModel):
+    """Typed terminator emitted as the last NDJSON line of a log stream."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["end"] = "end"
+    reason: Literal["completed", "truncated", "idle_timeout"]
+    final_seq: int
+
+
 class LogsPage(BaseModel):
-    """A batch of :class:`LogRecord` rows; ``next_since`` is the resume cursor (``None`` once the stream ended)."""
+    """A batch of :class:`LogRecord` rows; ``next_since`` resumes the stream, ``end_reason`` is set once it terminates."""
 
     model_config = ConfigDict(frozen=True)
 
     records: list[LogRecord]
     next_since: int | None = None
+    end_reason: Literal["completed", "truncated", "idle_timeout"] | None = None

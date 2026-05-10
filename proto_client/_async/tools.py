@@ -19,6 +19,7 @@ from proto_client.models import (
     JobStatus,
     JobStatusResponse,
     LogRecord,
+    LogsEnd,
     LogsPage,
     ToolExample,
     ToolInfo,
@@ -152,16 +153,16 @@ class AsyncToolsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
-    ) -> AsyncIterator[LogRecord]:
-        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows."""
+    ) -> AsyncIterator[LogRecord | LogsEnd]:
+        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
         params: dict[str, Any] = {"follow": str(follow).lower()}
         if since is not None:
             params["since"] = since
         if limit is not None:
             params["limit"] = limit
         path = f"/api/v1/tools/{tool_key}/jobs/{job_id}/logs"
-        async for record in _aiter_ndjson_records(self._http, path, params):
-            yield record
+        async for item in _aiter_ndjson_records(self._http, path, params):
+            yield item
 
     async def get_job_logs(
         self,

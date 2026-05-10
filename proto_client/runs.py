@@ -23,6 +23,7 @@ from proto_client.models import (
     CreateRunResponse,
     GeneratorSpec,
     LogRecord,
+    LogsEnd,
     LogsPage,
     OptimizerSpec,
     PaginatedTimepoints,
@@ -226,8 +227,8 @@ class RunsNamespace:
         since: int | None = None,
         follow: bool = False,
         limit: int | None = None,
-    ) -> Iterator[LogRecord]:
-        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows."""
+    ) -> Iterator[LogRecord | LogsEnd]:
+        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows, ending with :class:`LogsEnd` if the server emits one."""
         params: dict[str, Any] = {"follow": str(follow).lower()}
         if since is not None:
             params["since"] = since

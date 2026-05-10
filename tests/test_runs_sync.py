@@ -9,7 +9,8 @@ from typing import Any
 
 import httpx
 import pytest
-from helpers import log_line, logs_payload, make_async_ns, make_sync_ns, ndjson_response, run_response_json
+from helpers import end_line, log_line, logs_payload, make_async_ns, make_sync_ns, ndjson_response, run_response_json
+from pydantic import ValidationError
 
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
 from proto_client.models import (
@@ -18,6 +19,7 @@ from proto_client.models import (
     CreateRunResponse,
     GeneratorSpec,
     LogRecord,
+    LogsEnd,
     MetricPoint,
     OptimizerSpec,
     PaginatedTimepoints,
@@ -591,10 +593,16 @@ def test_sync_run_with_webhook_params(monkeypatch):
 
 
 def test_iter_ndjson_yields_parsed_records():
-    payload = logs_payload(log_line(1, "stdout", "a"), log_line(2, "stderr", "b"))
+    payload = logs_payload(
+        log_line(1, "stdout", "a", level="info"),
+        log_line(2, "stderr", "b", level="warning"),
+    )
     rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1"))
     assert all(isinstance(r, LogRecord) for r in rows)
-    assert [(r.seq, r.stream, r.msg) for r in rows] == [(1, "stdout", "a"), (2, "stderr", "b")]
+    assert [(r.seq, r.stream, r.level, r.msg) for r in rows] == [
+        (1, "stdout", "info", "a"),
+        (2, "stderr", "warning", "b"),
+    ]
 
 
 def test_iter_ndjson_skips_empty_lines():
@@ -606,20 +614,23 @@ def test_iter_ndjson_skips_empty_lines():
 def test_iter_ndjson_terminates_on_end_marker():
     payload = logs_payload(
         log_line(1, "stdout", "first"),
-        log_line(2, "system", "__end__"),
-        log_line(3, "stdout", "should-not-see"),
+        end_line(reason="completed", final_seq=1),
+        log_line(2, "stdout", "should-not-see"),
     )
     rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1", follow=True))
-    assert [r.msg for r in rows] == ["first", "__end__"]
+    assert [type(r) for r in rows] == [LogRecord, LogsEnd]
+    assert rows[0].msg == "first"
+    assert (rows[1].reason, rows[1].final_seq) == ("completed", 1)
 
 
 def test_iter_ndjson_caller_break_releases_connection():
     payload = logs_payload(log_line(1), log_line(2), log_line(3))
     ns = make_sync_ns(lambda _: ndjson_response(payload))
     for rec in ns.iter_logs("r1"):
-        if rec.seq == 1:
+        if isinstance(rec, LogRecord) and rec.seq == 1:
             break
-    assert [r.seq for r in ns.iter_logs("r2")] == [1, 2, 3]
+    seqs = [r.seq for r in ns.iter_logs("r2") if isinstance(r, LogRecord)]
+    assert seqs == [1, 2, 3]
 
 
 def test_iter_ndjson_error_before_body_raises():
@@ -630,10 +641,22 @@ def test_iter_ndjson_error_before_body_raises():
         list(make_sync_ns(handler).iter_logs("r1"))
 
 
-async def test_async_iter_ndjson_yields_and_terminates():
-    payload = logs_payload(log_line(1, "stdout", "a"), log_line(2, "system", "__end__"))
-    rows = [r async for r in make_async_ns(lambda _: ndjson_response(payload)).iter_logs("r1", follow=True)]
-    assert [(r.seq, r.msg) for r in rows] == [(1, "a"), (2, "__end__")]
+# ── LogRecord wire-shape validation ──────────────────────────────────
+
+
+_LOG_RECORD_BASE = {
+    "type": "record",
+    "seq": 1,
+    "ts": "2026-05-09T12:34:56.789Z",
+    "stream": "stdout",
+    "msg": "x",
+}
+
+
+@pytest.mark.parametrize("override", [{}, {"level": "verbose"}], ids=["missing", "unknown"])
+def test_log_record_rejects_bad_level(override: dict[str, Any]):
+    with pytest.raises(ValidationError):
+        LogRecord.model_validate(_LOG_RECORD_BASE | override)
 
 
 # ── runs.iter_logs / runs.get_logs ───────────────────────────────────
@@ -650,24 +673,30 @@ def test_sync_iter_logs_path_and_params():
     rows = list(make_sync_ns(handler).iter_logs("r1", since=42, follow=True, limit=200))
     assert captured["path"] == "/api/v1/runs/r1/logs"
     assert captured["query"] == {"since": "42", "follow": "true", "limit": "200"}
-    assert rows[0].seq == 1
+    assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
 @pytest.mark.parametrize(
-    ("payload", "since_in", "expected_seqs", "expected_next_since"),
+    ("payload", "since_in", "expected_seqs", "expected_next_since", "expected_end_reason"),
     [
-        (logs_payload(log_line(10), log_line(11)), None, [10, 11], 11),
-        (logs_payload(log_line(5), log_line(6, "system", "__end__")), None, [5, 6], None),
-        (b"", 7, [], 7),
-        (b"", None, [], None),
-        (logs_payload(log_line(3, "system", "__end__")), None, [3], None),
+        (logs_payload(log_line(10), log_line(11)), None, [10, 11], 11, None),
+        (
+            logs_payload(log_line(5), end_line(reason="truncated", final_seq=5)),
+            None,
+            [5],
+            None,
+            "truncated",
+        ),
+        (b"", 7, [], 7, None),
+        (b"", None, [], None, None),
+        (logs_payload(end_line(reason="completed", final_seq=3)), None, [], None, "completed"),
     ],
     ids=[
-        "no-end-marker-resumes-from-last-seq",
-        "end-marker-clears-cursor",
+        "no-terminator-resumes-from-last-seq",
+        "terminator-clears-cursor-and-sets-end-reason",
         "empty-page-preserves-cursor",
         "empty-page-no-cursor-stays-none",
-        "end-marker-only-clears-cursor",
+        "terminator-only-yields-empty-page",
     ],
 )
 def test_sync_get_logs_next_since(
@@ -675,10 +704,12 @@ def test_sync_get_logs_next_since(
     since_in: int | None,
     expected_seqs: list[int],
     expected_next_since: int | None,
+    expected_end_reason: str | None,
 ):
     page = make_sync_ns(lambda _: ndjson_response(payload)).get_logs("r1", since=since_in)
     assert [r.seq for r in page.records] == expected_seqs
     assert page.next_since == expected_next_since
+    assert page.end_reason == expected_end_reason
 
 
 async def test_async_iter_logs_path_and_params():
@@ -692,17 +723,12 @@ async def test_async_iter_logs_path_and_params():
     rows = [r async for r in make_async_ns(handler).iter_logs("r1", since=42, follow=True, limit=200)]
     assert captured["path"] == "/api/v1/runs/r1/logs"
     assert captured["query"] == {"since": "42", "follow": "true", "limit": "200"}
-    assert rows[0].seq == 1
+    assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
-async def test_async_get_logs_next_since():
-    payload = logs_payload(log_line(10), log_line(11))
+async def test_async_get_logs_smoke():
+    """Async path mirrors sync: records carry a cursor, terminator surfaces ``end_reason`` and clears it."""
+    payload = logs_payload(log_line(10), end_line(reason="idle_timeout", final_seq=10))
     page = await make_async_ns(lambda _: ndjson_response(payload)).get_logs("r1")
-    assert [r.seq for r in page.records] == [10, 11]
-    assert page.next_since == 11
-
-
-async def test_async_get_logs_empty_page_preserves_cursor():
-    page = await make_async_ns(lambda _: ndjson_response(b"")).get_logs("r1", since=42)
-    assert page.records == []
-    assert page.next_since == 42
+    assert [r.seq for r in page.records] == [10]
+    assert (page.next_since, page.end_reason) == (None, "idle_timeout")
