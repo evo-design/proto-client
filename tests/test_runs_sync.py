@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
-from helpers import make_sync_ns, run_response_json
+from helpers import log_line, logs_payload, make_async_ns, make_sync_ns, ndjson_response, run_response_json
 
 from proto_client.errors import ProtoAPIError, ProtoValidationError, RunCancelledError, RunFailedError
 from proto_client.models import (
@@ -17,6 +17,7 @@ from proto_client.models import (
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
+    LogRecord,
     MetricPoint,
     OptimizerSpec,
     PaginatedTimepoints,
@@ -584,3 +585,124 @@ def test_sync_run_with_webhook_params(monkeypatch):
     )
     assert "webhook_url" in captured["body"]
     assert "webhook_metadata" in captured["body"]
+
+
+# ── _iter_ndjson_records helper ──────────────────────────────────────
+
+
+def test_iter_ndjson_yields_parsed_records():
+    payload = logs_payload(log_line(1, "stdout", "a"), log_line(2, "stderr", "b"))
+    rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1"))
+    assert all(isinstance(r, LogRecord) for r in rows)
+    assert [(r.seq, r.stream, r.msg) for r in rows] == [(1, "stdout", "a"), (2, "stderr", "b")]
+
+
+def test_iter_ndjson_skips_empty_lines():
+    payload = b"\n\n" + log_line(1) + b"\n\n" + log_line(2) + b"\n\n"
+    rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1"))
+    assert [r.seq for r in rows] == [1, 2]
+
+
+def test_iter_ndjson_terminates_on_end_marker():
+    payload = logs_payload(
+        log_line(1, "stdout", "first"),
+        log_line(2, "system", "__end__"),
+        log_line(3, "stdout", "should-not-see"),
+    )
+    rows = list(make_sync_ns(lambda _: ndjson_response(payload)).iter_logs("r1", follow=True))
+    assert [r.msg for r in rows] == ["first", "__end__"]
+
+
+def test_iter_ndjson_caller_break_releases_connection():
+    payload = logs_payload(log_line(1), log_line(2), log_line(3))
+    ns = make_sync_ns(lambda _: ndjson_response(payload))
+    for rec in ns.iter_logs("r1"):
+        if rec.seq == 1:
+            break
+    assert [r.seq for r in ns.iter_logs("r2")] == [1, 2, 3]
+
+
+def test_iter_ndjson_error_before_body_raises():
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "missing"})
+
+    with pytest.raises(ProtoAPIError):
+        list(make_sync_ns(handler).iter_logs("r1"))
+
+
+async def test_async_iter_ndjson_yields_and_terminates():
+    payload = logs_payload(log_line(1, "stdout", "a"), log_line(2, "system", "__end__"))
+    rows = [r async for r in make_async_ns(lambda _: ndjson_response(payload)).iter_logs("r1", follow=True)]
+    assert [(r.seq, r.msg) for r in rows] == [(1, "a"), (2, "__end__")]
+
+
+# ── runs.iter_logs / runs.get_logs ───────────────────────────────────
+
+
+def test_sync_iter_logs_path_and_params():
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return ndjson_response(logs_payload(log_line(1)))
+
+    rows = list(make_sync_ns(handler).iter_logs("r1", since=42, follow=True, limit=200))
+    assert captured["path"] == "/api/v1/runs/r1/logs"
+    assert captured["query"] == {"since": "42", "follow": "true", "limit": "200"}
+    assert rows[0].seq == 1
+
+
+@pytest.mark.parametrize(
+    ("payload", "since_in", "expected_seqs", "expected_next_since"),
+    [
+        (logs_payload(log_line(10), log_line(11)), None, [10, 11], 11),
+        (logs_payload(log_line(5), log_line(6, "system", "__end__")), None, [5, 6], None),
+        (b"", 7, [], 7),
+        (b"", None, [], None),
+        (logs_payload(log_line(3, "system", "__end__")), None, [3], None),
+    ],
+    ids=[
+        "no-end-marker-resumes-from-last-seq",
+        "end-marker-clears-cursor",
+        "empty-page-preserves-cursor",
+        "empty-page-no-cursor-stays-none",
+        "end-marker-only-clears-cursor",
+    ],
+)
+def test_sync_get_logs_next_since(
+    payload: bytes,
+    since_in: int | None,
+    expected_seqs: list[int],
+    expected_next_since: int | None,
+):
+    page = make_sync_ns(lambda _: ndjson_response(payload)).get_logs("r1", since=since_in)
+    assert [r.seq for r in page.records] == expected_seqs
+    assert page.next_since == expected_next_since
+
+
+async def test_async_iter_logs_path_and_params():
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return ndjson_response(logs_payload(log_line(1)))
+
+    rows = [r async for r in make_async_ns(handler).iter_logs("r1", since=42, follow=True, limit=200)]
+    assert captured["path"] == "/api/v1/runs/r1/logs"
+    assert captured["query"] == {"since": "42", "follow": "true", "limit": "200"}
+    assert rows[0].seq == 1
+
+
+async def test_async_get_logs_next_since():
+    payload = logs_payload(log_line(10), log_line(11))
+    page = await make_async_ns(lambda _: ndjson_response(payload)).get_logs("r1")
+    assert [r.seq for r in page.records] == [10, 11]
+    assert page.next_since == 11
+
+
+async def test_async_get_logs_empty_page_preserves_cursor():
+    page = await make_async_ns(lambda _: ndjson_response(b"")).get_logs("r1", since=42)
+    assert page.records == []
+    assert page.next_since == 42

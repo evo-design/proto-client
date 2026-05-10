@@ -50,6 +50,9 @@ __all__ = [
     "StageMetrics",
     "StageResult",
     "ValidationResponse",
+    # Logs (shared by runs + tools jobs)
+    "LogRecord",
+    "LogsPage",
 ]
 
 
@@ -455,3 +458,28 @@ class OptimizerSpec(BaseModel):
     uses_gpu: bool
     config_model: dict[str, Any]
     targets_single_segment: bool
+
+
+# ---------------------------------------------------------------------------
+# Logs — shared by runs and tools jobs
+# ---------------------------------------------------------------------------
+
+
+class LogRecord(BaseModel):
+    """A single NDJSON log line. ``stream == "system"`` carries lifecycle markers (``__end__``, ``__truncated__``)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    seq: int
+    ts: datetime
+    stream: Literal["stdout", "stderr", "system"]
+    msg: str
+
+
+class LogsPage(BaseModel):
+    """A batch of :class:`LogRecord` rows; ``next_since`` is the resume cursor (``None`` once the stream ended)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    records: list[LogRecord]
+    next_since: int | None = None

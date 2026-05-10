@@ -3,11 +3,13 @@
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from proto_client._async._ndjson import _acollect_logs_page, _aiter_ndjson_records
 from proto_client.errors import from_response
 from proto_client.models import (
     BatchItemFailure,
@@ -16,6 +18,8 @@ from proto_client.models import (
     JobResponse,
     JobStatus,
     JobStatusResponse,
+    LogRecord,
+    LogsPage,
     ToolExample,
     ToolInfo,
     ToolSchema,
@@ -137,6 +141,41 @@ class AsyncToolsNamespace:
         if resp.is_error:
             raise from_response(resp)
         return JobStatusResponse.model_validate(resp.json())
+
+    # ------------------------------------------------------------------- logs
+
+    async def iter_job_logs(
+        self,
+        tool_key: str,
+        job_id: str,
+        *,
+        since: int | None = None,
+        follow: bool = False,
+        limit: int | None = None,
+    ) -> AsyncIterator[LogRecord]:
+        """GET /api/v1/tools/{tool_key}/jobs/{job_id}/logs — stream :class:`LogRecord` rows."""
+        params: dict[str, Any] = {"follow": str(follow).lower()}
+        if since is not None:
+            params["since"] = since
+        if limit is not None:
+            params["limit"] = limit
+        path = f"/api/v1/tools/{tool_key}/jobs/{job_id}/logs"
+        async for record in _aiter_ndjson_records(self._http, path, params):
+            yield record
+
+    async def get_job_logs(
+        self,
+        tool_key: str,
+        job_id: str,
+        *,
+        since: int | None = None,
+        limit: int = 1000,
+    ) -> LogsPage:
+        """Collect job log history into a :class:`LogsPage`."""
+        return await _acollect_logs_page(
+            self.iter_job_logs(tool_key, job_id, since=since, follow=False, limit=limit),
+            since,
+        )
 
     async def run(
         self,

@@ -1,0 +1,50 @@
+"""Async NDJSON streaming helpers shared by runs.iter_logs and tools.iter_job_logs."""
+
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
+
+import httpx
+
+from proto_client.errors import from_response
+from proto_client.models import LogRecord, LogsPage
+
+logger = logging.getLogger(__name__)
+
+
+async def _aiter_ndjson_records(
+    http: httpx.AsyncClient,
+    path: str,
+    params: dict[str, Any],
+) -> AsyncIterator[LogRecord]:
+    """Stream :class:`LogRecord` rows; yields the ``system: __end__`` terminator then stops."""
+    logger.debug("GET %s (stream)", path)
+    async with http.stream("GET", path, params=params) as resp:
+        logger.debug("GET %s -> %d", path, resp.status_code)
+        if resp.is_error:
+            await resp.aread()
+            raise from_response(resp)
+        async for line in resp.aiter_lines():
+            if not line:
+                continue
+            record = LogRecord.model_validate_json(line)
+            yield record
+            if record.stream == "system" and record.msg == "__end__":
+                return
+
+
+async def _acollect_logs_page(records_iter: AsyncIterator[LogRecord], since: int | None) -> LogsPage:
+    """Drain *records_iter* into a :class:`LogsPage`. Server ``?since`` is exclusive, so resume cursor = ``last.seq``."""
+    records: list[LogRecord] = []
+    end_seen = False
+    async for record in records_iter:
+        records.append(record)
+        if record.stream == "system" and record.msg == "__end__":
+            end_seen = True
+    if end_seen:
+        next_since: int | None = None
+    elif records:
+        next_since = records[-1].seq
+    else:
+        next_since = since
+    return LogsPage(records=records, next_since=next_since)

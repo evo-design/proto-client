@@ -1,12 +1,15 @@
 """Shared test helpers for building mock responses and namespaces."""
 
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
 import httpx
 
 from proto_client._async.runs import AsyncRunsNamespace
+from proto_client._async.tools import AsyncToolsNamespace
 from proto_client.runs import RunsNamespace
+from proto_client.tools import ToolsNamespace
 
 
 def mock_response(data: Any, status_code: int = 200) -> MagicMock:
@@ -76,3 +79,29 @@ def make_sync_ns(handler) -> RunsNamespace:
     transport = httpx.MockTransport(handler)
     http = httpx.Client(transport=transport, base_url="https://api.test")
     return RunsNamespace(http)
+
+
+def make_async_tools_ns(handler) -> AsyncToolsNamespace:
+    """Create an AsyncToolsNamespace backed by a mock transport."""
+    transport = httpx.MockTransport(handler)
+    http = httpx.AsyncClient(transport=transport, base_url="https://api.test")
+    return AsyncToolsNamespace(http)
+
+
+def make_sync_tools_ns(handler) -> ToolsNamespace:
+    """Create a ToolsNamespace backed by a mock transport."""
+    transport = httpx.MockTransport(handler)
+    http = httpx.Client(transport=transport, base_url="https://api.test")
+    return ToolsNamespace(http)
+
+
+def log_line(seq: int, stream: str = "stdout", msg: str = "hello") -> bytes:
+    return json.dumps({"seq": seq, "ts": "2026-05-09T12:34:56.789Z", "stream": stream, "msg": msg}).encode()
+
+
+def logs_payload(*lines: bytes) -> bytes:
+    return b"\n".join(lines) + b"\n"
+
+
+def ndjson_response(payload: bytes = b"", status: int = 200) -> httpx.Response:
+    return httpx.Response(status, content=payload, headers={"content-type": "application/x-ndjson"})

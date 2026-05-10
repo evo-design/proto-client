@@ -15,12 +15,15 @@ from typing import Any
 
 import httpx
 
+from proto_client._ndjson import _collect_logs_page, _iter_ndjson_records
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
 from proto_client.models import (
     CancelRunResponse,
     ConstraintSpec,
     CreateRunResponse,
     GeneratorSpec,
+    LogRecord,
+    LogsPage,
     OptimizerSpec,
     PaginatedTimepoints,
     RunResponse,
@@ -213,6 +216,38 @@ class RunsNamespace:
             for line in resp.iter_lines():
                 if line:
                     yield RunTimepointResponse.model_validate_json(line)
+
+    # ------------------------------------------------------------------- logs
+
+    def iter_logs(
+        self,
+        run_id: str,
+        *,
+        since: int | None = None,
+        follow: bool = False,
+        limit: int | None = None,
+    ) -> Iterator[LogRecord]:
+        """GET /api/v1/runs/{run_id}/logs — stream :class:`LogRecord` rows."""
+        params: dict[str, Any] = {"follow": str(follow).lower()}
+        if since is not None:
+            params["since"] = since
+        if limit is not None:
+            params["limit"] = limit
+        path = f"/api/v1/runs/{run_id}/logs"
+        yield from _iter_ndjson_records(self._http, path, params)
+
+    def get_logs(
+        self,
+        run_id: str,
+        *,
+        since: int | None = None,
+        limit: int = 1000,
+    ) -> LogsPage:
+        """Collect log history into a :class:`LogsPage`."""
+        return _collect_logs_page(
+            self.iter_logs(run_id, since=since, follow=False, limit=limit),
+            since,
+        )
 
     # ------------------------------------------------------------- discovery
 
