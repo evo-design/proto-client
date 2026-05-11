@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
 from proto_client.errors import from_response
@@ -36,12 +37,10 @@ class ProtoClient:
 
         Args:
             api_key: API key for authentication. Falls back to ``PROTO_API_KEY`` env var.
-            tools_base_url: Base URL for the the tools API. Falls back to
-                ``PROTO_TOOLS_BASE_URL`` env var, then
-                ``https://proto-tools.evodesign.org``.
-            runs_base_url: Base URL for the the runs API. Falls back to
-                ``PROTO_RUNS_BASE_URL`` env var, then
-                ``https://proto-language.evodesign.org``.
+            tools_base_url: Base URL for the tools API. Falls back to
+                ``PROTO_TOOLS_BASE_URL`` env var, then the package default.
+            runs_base_url: Base URL for the runs API. Falls back to
+                ``PROTO_RUNS_BASE_URL`` env var, then the package default.
             timeout: Default request timeout in seconds.
             max_retries: Number of retry attempts for failed requests. Ignored if
                 *retry_config* is provided.
@@ -54,12 +53,12 @@ class ProtoClient:
         resolved_tools_url = (
             tools_base_url
             if tools_base_url is not None
-            else (os.environ.get("PROTO_TOOLS_BASE_URL") or "https://proto-tools.evodesign.org")
+            else (os.environ.get("PROTO_TOOLS_BASE_URL") or DEFAULT_TOOLS_BASE_URL)
         )
         resolved_runs_url = (
             runs_base_url
             if runs_base_url is not None
-            else (os.environ.get("PROTO_RUNS_BASE_URL") or "https://proto-language.evodesign.org")
+            else (os.environ.get("PROTO_RUNS_BASE_URL") or DEFAULT_RUNS_BASE_URL)
         )
 
         headers: dict[str, str] = {

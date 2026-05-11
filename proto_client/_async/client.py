@@ -9,6 +9,7 @@ import httpx
 
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
+from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
 from proto_client._http import AsyncRetryTransport, RetryConfig
 from proto_client._version import VERSION
 from proto_client.errors import from_response
@@ -41,12 +42,12 @@ class AsyncProtoClient:
         resolved_tools_url = (
             tools_base_url
             if tools_base_url is not None
-            else (os.environ.get("PROTO_TOOLS_BASE_URL") or "https://proto-tools.evodesign.org")
+            else (os.environ.get("PROTO_TOOLS_BASE_URL") or DEFAULT_TOOLS_BASE_URL)
         )
         resolved_runs_url = (
             runs_base_url
             if runs_base_url is not None
-            else (os.environ.get("PROTO_RUNS_BASE_URL") or "https://proto-language.evodesign.org")
+            else (os.environ.get("PROTO_RUNS_BASE_URL") or DEFAULT_RUNS_BASE_URL)
         )
 
         headers: dict[str, str] = {

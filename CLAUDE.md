@@ -40,8 +40,8 @@ Only files in the `SYNC_TARGETS` list in `scripts/gen_sync.py` are transformed. 
 
 ```
 ProtoClient / AsyncProtoClient
-├── .tools  → ToolsNamespace      (base: proto-tools.evodesign.org)
-└── .runs   → RunsNamespace       (base: proto-language.evodesign.org)
+├── .tools  → ToolsNamespace      (base: PROTO_TOOLS_BASE_URL)
+└── .runs   → RunsNamespace       (base: PROTO_RUNS_BASE_URL)
               ↓
          httpx.Client / AsyncClient
               ↓
@@ -77,7 +77,7 @@ The server lifespan creates/closes an `AsyncProtoClient` that reads config from 
 ## Configuration
 
 - **Env vars**: `PROTO_API_KEY`, `PROTO_TOOLS_BASE_URL`, `PROTO_RUNS_BASE_URL`
-- **Defaults**: tools → `https://proto-tools.evodesign.org`, runs → `https://proto-language.evodesign.org`
+- **Defaults**: see `proto_client/_defaults.py`
 
 ## Testing Patterns
 
