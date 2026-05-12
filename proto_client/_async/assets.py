@@ -9,25 +9,41 @@ from typing import BinaryIO
 
 import httpx
 
-from proto_client._assets import AssetLike, asset_url, origin_of, redirect_location, strip_sensitive_redirect_headers
+from proto_client._assets import (
+    AssetLike,
+    asset_url,
+    decode_asset_bytes,
+    origin_of,
+    redirect_location,
+    strip_sensitive_redirect_headers,
+)
 from proto_client.errors import from_response
 
 
 class AsyncAssetsNamespace:
-    """Async sibling of :class:`AssetsNamespace` — same routing semantics."""
+    """Async sibling of :class:`AssetsNamespace` with the same fetch semantics."""
 
     def __init__(self, http_clients: list[httpx.AsyncClient]) -> None:
         """Initialize with the set of authenticated httpx AsyncClients."""
         self._clients_by_origin = {origin_of(str(c.base_url)): c for c in http_clients}
 
     async def get(self, ref: AssetLike) -> bytes:
-        """Fetch asset bytes into memory."""
+        """Fetch exact stored asset bytes into memory."""
         buffer = BytesIO()
         await self._write_to(ref, buffer)
         return buffer.getvalue()
 
+    async def decode(self, ref: AssetLike) -> object:
+        """Fetch and decode an asset by MIME type.
+
+        JSON assets become Python values, chemical/text assets become strings,
+        and unknown MIME types remain bytes. This loads the full asset into
+        memory.
+        """
+        return decode_asset_bytes(ref, await self.get(ref))
+
     async def download(self, ref: AssetLike, path: str | Path) -> Path:
-        """Stream asset bytes to ``path``."""
+        """Stream exact stored asset bytes to ``path``."""
         destination = Path(path)
         file = await asyncio.to_thread(destination.open, "wb")
         try:

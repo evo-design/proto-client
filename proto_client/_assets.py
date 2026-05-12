@@ -1,5 +1,7 @@
 """Shared helpers for the assets namespace."""
 
+import gzip
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,6 +26,19 @@ def asset_url(ref_or_dict: AssetLike) -> str:
             "(legacy server, or this is a `reference_db` / user-upload-allocation ref)."
         )
     return ref_or_dict.url
+
+
+def decode_asset_bytes(ref_or_dict: AssetLike, data: bytes) -> Any:
+    if isinstance(ref_or_dict, dict):
+        ref_or_dict = AssetRef.model_validate(ref_or_dict)
+    mime_type = ref_or_dict.mime_type or ""
+    if mime_type == "application/json+gzip":
+        return json.loads(gzip.decompress(data).decode("utf-8"))
+    if mime_type == "application/json" or mime_type.endswith("+json"):
+        return json.loads(data.decode("utf-8"))
+    if mime_type.startswith(("chemical/", "text/")):
+        return data.decode("utf-8")
+    return data
 
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}

@@ -1,5 +1,7 @@
 """AssetRef and lazy asset download tests."""
 
+import gzip
+import json
 from pathlib import Path
 
 import httpx
@@ -29,6 +31,38 @@ def test_asset_ref_requires_nonempty_id() -> None:
     AssetRef(id="asset_x", kind="output")
     with pytest.raises(ValidationError):
         AssetRef(id="", kind="output")
+
+
+def test_decode_json_gzip_asset_explicitly() -> None:
+    ref = {
+        "id": "asset_x",
+        "kind": "output",
+        "mime_type": "application/json+gzip",
+        "url": "https://api.test/api/v1/assets/asset_x",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/assets/asset_x"
+        return httpx.Response(200, content=gzip.compress(json.dumps([[1.0, 2.0]]).encode(), mtime=0))
+
+    with _sync(handler) as http:
+        assert AssetsNamespace([http]).decode(ref) == [[1.0, 2.0]]
+
+
+async def test_async_decode_text_asset_explicitly() -> None:
+    ref = {
+        "id": "asset_x",
+        "kind": "output",
+        "mime_type": "chemical/x-pdb",
+        "url": "https://api.test/api/v1/assets/asset_x",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/assets/asset_x"
+        return httpx.Response(200, content=b"ATOM      1\n")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://api.test") as http:
+        assert await AsyncAssetsNamespace([http]).decode(ref) == "ATOM      1\n"
 
 
 def test_download_follows_redirect_and_strips_auth(tmp_path: Path) -> None:
@@ -124,6 +158,41 @@ def test_user_output_model_parses_asset_refs_in_results() -> None:
 
     result = make_sync_tools_ns(handler).run("evo2-score", {}, poll_interval=0.01, output_model=Output)
     assert result.result.scores[0].logits == AssetRef(id="asset_x", kind="output")
+
+
+def test_output_model_does_not_materialize_asset_refs_implicitly() -> None:
+    class Score(BaseModel):
+        logits: list[list[float]]
+
+    class Output(BaseModel):
+        scores: list[Score]
+
+    ref = {
+        "id": "asset_x",
+        "kind": "output",
+        "mime_type": "application/json+gzip",
+        "url": "https://api.test/api/v1/assets/asset_x",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/tools/evo2-score/run":
+            return httpx.Response(202, json={"job_id": "j1", "status": "pending"})
+        assert request.url.path != "/api/v1/assets/asset_x"
+        return httpx.Response(
+            200,
+            json={
+                "job_id": "j1",
+                "tool_key": "evo2-score",
+                "status": "completed",
+                "result": {"scores": [{"logits": ref}]},
+                "error": None,
+                "created_at": "2026-04-05T12:00:00",
+                "completed_at": "2026-04-05T12:00:05",
+            },
+        )
+
+    with pytest.raises(TypeError, match="does not conform"):
+        make_sync_tools_ns(handler).run("evo2-score", {}, poll_interval=0.01, output_model=Output)
 
 
 async def test_async_download_parity(tmp_path: Path) -> None:

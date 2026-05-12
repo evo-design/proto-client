@@ -43,13 +43,35 @@ async with AsyncProtoClient(api_key="...") as client:
 
 Set `PROTO_API_KEY` to skip passing `api_key=` each time.
 
-### Downloading output assets
+### Working with output assets
 
-Large outputs are returned as `AssetRef` objects (dicts on the wire) carrying a
-self-describing `url`. Use `client.assets.download()` for large files;
-`get()` loads the full asset into memory. Both accept the raw dict pulled
-straight out of a result — no manual validation step needed. One namespace
-serves both tool-job and run outputs; routing happens automatically.
+Large cloud outputs can be returned as `AssetRef` objects instead of inline
+strings or JSON arrays. The SDK asset helpers work with API-readable refs:
+an `AssetRef` object or raw dict that includes a `url` pointing back to one of
+the configured Proto API origins. They are intended for `kind="output"` refs
+returned in tool-job or run results.
+
+Not every `AssetRef` is fetchable: upload allocation refs, reference database
+refs without an API URL, refs missing `url`, and direct storage URLs are
+rejected. The client fetches through the Proto API first, then follows storage
+redirects with authentication headers stripped.
+
+| Method | Return value | MIME handling | Use when |
+|---|---|---|---|
+| `client.assets.download(ref, path)` | bytes streamed to a file | none; preserves exact stored bytes | you want a file, or the asset may be large |
+| `client.assets.get(ref)` | raw `bytes` in memory | none; preserves exact stored bytes | you explicitly want raw bytes |
+| `client.assets.decode(ref)` | Python object, text, or bytes | decodes by `mime_type` | you want a convenient in-Python value |
+
+`decode()` maps `application/json+gzip` to gunzipped JSON,
+`application/json` / `*+json` to JSON, `chemical/*` / `text/*` to UTF-8 text,
+and unknown MIME types to raw bytes. It loads the full asset into memory, so
+prefer `download()` for large logits, PAE matrices, embeddings, and other dense
+outputs.
+
+Typed tool output validation stays lazy. If an output model declares an
+`AssetRef` field, validation preserves the ref. If it declares the old raw
+shape, such as `list[list[float]]`, validation fails normally; the SDK does not
+silently download large assets during validation.
 
 ```python
 from proto_client import ProtoClient
@@ -57,13 +79,21 @@ from proto_client import ProtoClient
 client = ProtoClient(api_key="...")
 
 job = client.tools.run("evo2-score", inputs, config)
-client.assets.download(job.result["scores"][0]["logits"], "logits.json.gz")
+logits_ref = job.result["scores"][0]["logits"]
+client.assets.download(logits_ref, "logits.json.gz")
 
 run = client.runs.get("run_123")
 pdb_output = run.stage_results[0].results[0].constructs[0].segments[0].constraints["fold"].data[
     "pdb_output"
 ]
-pdb_bytes = client.assets.get(pdb_output)
+pdb_text = client.assets.decode(pdb_output)
+```
+
+Async clients expose the same namespace with `await`:
+
+```python
+async with AsyncProtoClient(api_key="...") as client:
+    pdb_text = await client.assets.decode(pdb_output)
 ```
 
 ## Using with AI Agents (MCP)

@@ -8,15 +8,24 @@ from typing import BinaryIO
 
 import httpx
 
-from proto_client._assets import AssetLike, asset_url, origin_of, redirect_location, strip_sensitive_redirect_headers
+from proto_client._assets import (
+    AssetLike,
+    asset_url,
+    decode_asset_bytes,
+    origin_of,
+    redirect_location,
+    strip_sensitive_redirect_headers,
+)
 from proto_client.errors import from_response
 
 
 class AssetsNamespace:
-    """Download API-managed asset bytes via the URL stamped on each ``AssetRef``.
+    """Fetch API-readable output assets via the URL stamped on each ``AssetRef``.
 
     A single namespace serves refs from any configured backend; routing is by
-    URL origin (matched against each client's ``base_url``).
+    URL origin (matched against each client's ``base_url``). Upload allocation,
+    reference database, missing-URL, and direct-storage refs are not generally
+    fetchable through this namespace.
     """
 
     def __init__(self, http_clients: list[httpx.Client]) -> None:
@@ -24,13 +33,22 @@ class AssetsNamespace:
         self._clients_by_origin = {origin_of(str(c.base_url)): c for c in http_clients}
 
     def get(self, ref: AssetLike) -> bytes:
-        """Fetch asset bytes into memory."""
+        """Fetch exact stored asset bytes into memory."""
         buffer = BytesIO()
         self._write_to(ref, buffer)
         return buffer.getvalue()
 
+    def decode(self, ref: AssetLike) -> object:
+        """Fetch and decode an asset by MIME type.
+
+        JSON assets become Python values, chemical/text assets become strings,
+        and unknown MIME types remain bytes. This loads the full asset into
+        memory.
+        """
+        return decode_asset_bytes(ref, self.get(ref))
+
     def download(self, ref: AssetLike, path: str | Path) -> Path:
-        """Stream asset bytes to ``path``."""
+        """Stream exact stored asset bytes to ``path``."""
         destination = Path(path)
         with destination.open("wb") as file:
             self._write_to(ref, file)
