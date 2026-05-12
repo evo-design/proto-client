@@ -3,6 +3,7 @@
 import logging
 import os
 
+from proto_client._assets import AssetLike
 from proto_client._async.client import AsyncProtoClient
 from proto_client._http import RetryConfig
 from proto_client._version import VERSION as __version__
@@ -19,6 +20,7 @@ from proto_client.errors import (
     RunFailedError,
 )
 from proto_client.models import (
+    AssetRef,
     BatchItemFailure,
     BatchItemSuccess,
     BatchResult,
@@ -57,6 +59,8 @@ from proto_client.models import (
 __all__ = [
     "__version__",
     "AsyncProtoClient",
+    "AssetLike",
+    "AssetRef",
     "BatchItemFailure",
     "BatchItemSuccess",
     "BatchResult",

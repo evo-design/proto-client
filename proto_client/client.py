@@ -9,6 +9,7 @@ import httpx
 from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
+from proto_client.assets import AssetsNamespace
 from proto_client.errors import from_response
 from proto_client.models import MeResponse
 from proto_client.runs import RunsNamespace
@@ -84,6 +85,9 @@ class ProtoClient:
 
         self.tools = ToolsNamespace(tools_http)
         self.runs = RunsNamespace(runs_http)
+        # Single download namespace; routes per request by URL origin against the
+        # configured httpx clients (each ref carries its own absolute fetch URL).
+        self.assets = AssetsNamespace([tools_http, runs_http])
         self._runs_http = runs_http
         self._clients: list[httpx.Client] = [tools_http, runs_http]
 

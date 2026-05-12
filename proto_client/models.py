@@ -16,9 +16,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Discriminator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field
 
 __all__ = [
+    # Shared API models
+    "AssetRef",
     # Tools API models
     "BatchItemFailure",
     "BatchItemSuccess",
@@ -67,6 +69,20 @@ class JobStatus(str, Enum):
     completed = "completed"
     failed = "failed"
     cancelled = "cancelled"
+
+
+class AssetRef(BaseModel):
+    """Storage-neutral reference to API-managed asset bytes."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    kind: Literal["output", "reference_db", "user_upload"]
+    mime_type: str | None = None
+    size_bytes: int | None = None
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
+    url: str | None = None
 
 
 class ToolInfo(BaseModel):

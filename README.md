@@ -43,6 +43,29 @@ async with AsyncProtoClient(api_key="...") as client:
 
 Set `PROTO_API_KEY` to skip passing `api_key=` each time.
 
+### Downloading output assets
+
+Large outputs are returned as `AssetRef` objects (dicts on the wire) carrying a
+self-describing `url`. Use `client.assets.download()` for large files;
+`get()` loads the full asset into memory. Both accept the raw dict pulled
+straight out of a result — no manual validation step needed. One namespace
+serves both tool-job and run outputs; routing happens automatically.
+
+```python
+from proto_client import ProtoClient
+
+client = ProtoClient(api_key="...")
+
+job = client.tools.run("evo2-score", inputs, config)
+client.assets.download(job.result["scores"][0]["logits"], "logits.json.gz")
+
+run = client.runs.get("run_123")
+pdb_output = run.stage_results[0].results[0].constructs[0].segments[0].constraints["fold"].data[
+    "pdb_output"
+]
+pdb_bytes = client.assets.get(pdb_output)
+```
+
 ## Using with AI Agents (MCP)
 
 Proto Bio exposes an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.

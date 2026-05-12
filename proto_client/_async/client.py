@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
 from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
@@ -73,6 +74,7 @@ class AsyncProtoClient:
 
         self.tools = AsyncToolsNamespace(tools_http)
         self.runs = AsyncRunsNamespace(runs_http)
+        self.assets = AsyncAssetsNamespace([tools_http, runs_http])
         self._runs_http = runs_http
         self._clients: list[httpx.AsyncClient] = [tools_http, runs_http]
 
