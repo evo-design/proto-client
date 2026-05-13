@@ -35,10 +35,13 @@ class AsyncProtoClient:
         timeout: float = 600.0,
         max_retries: int = 2,
         retry_config: RetryConfig | None = None,
+        app_user_id: str | None = None,
     ) -> None:
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
+        if app_user_id == "":
+            raise ValueError("app_user_id must not be empty. Pass a non-empty value or omit the argument.")
 
         resolved_tools_url = (
             tools_base_url
@@ -56,6 +59,8 @@ class AsyncProtoClient:
         }
         if resolved_key:
             headers["X-API-Key"] = resolved_key
+        if app_user_id:
+            headers["x-app-user-id"] = app_user_id
 
         cfg = retry_config or RetryConfig(max_retries=max_retries)
 

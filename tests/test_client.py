@@ -29,6 +29,27 @@ def test_client_empty_key_raises():
         ProtoClient(api_key="")
 
 
+def test_client_sets_app_user_id_header_on_both_namespaces():
+    with ProtoClient(
+        api_key="x",
+        tools_base_url="http://localhost:9999",
+        runs_base_url="http://localhost:9998",
+        app_user_id="user-abc",
+    ) as c:
+        assert c.tools._http.headers.get("x-app-user-id") == "user-abc"
+        assert c.runs._http.headers.get("x-app-user-id") == "user-abc"
+
+
+def test_client_no_app_user_id_no_header():
+    with ProtoClient(api_key="x", tools_base_url="http://localhost:9999") as c:
+        assert "x-app-user-id" not in c.tools._http.headers
+
+
+def test_client_empty_app_user_id_raises():
+    with pytest.raises(ValueError, match="app_user_id must not be empty"):
+        ProtoClient(api_key="x", tools_base_url="http://localhost:9999", app_user_id="")
+
+
 def test_client_closes_both_http_clients():
     c = ProtoClient(
         tools_base_url="http://localhost:9999",
