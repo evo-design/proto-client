@@ -228,18 +228,27 @@ Then present the walkthrough:
     return [Message(template, role="user")]
 
 
+_CATEGORY_TO_INPUT_TYPE: dict[str, str] = {
+    "mutation": "STARTING_SEQUENCE",
+    "autoregressive": "PROMPT",
+    "inverse_folding": "STRUCTURE",
+    "gradient": "LOGITS",
+}
+
+
 def implement_generator_impl(name: str, description: str, category: str = "mutation") -> list[Message]:
     """Code template for a custom generator class."""
     config_class = name.replace("-", " ").title().replace(" ", "") + "Config"
     class_name = name.replace("-", " ").title().replace(" ", "") + "Generator"
     label = name.replace("-", " ").title()
+    input_type_member = _CATEGORY_TO_INPUT_TYPE.get(category, "STARTING_SEQUENCE")
 
     template = f"""\
 Implement a custom generator for the proto-language framework.
 
 **Name:** {name}
 **Description:** {description}
-**Category:** {category}
+**Category:** {category} (input_type = `GeneratorInputType.{input_type_member}`)
 **Config class:** {config_class}
 **Generator class:** {class_name}
 
@@ -251,7 +260,7 @@ import logging
 from typing import final
 
 from proto_language.base_config import BaseConfig, ConfigField
-from proto_language.language.core import Generator, Segment
+from proto_language.language.core import Generator, GeneratorInputType, Segment
 from proto_language.language.generator.generator_registry import generator
 
 logger = logging.getLogger(__name__)
@@ -268,7 +277,6 @@ class {config_class}(BaseConfig):
     label="{label}",
     config={config_class},
     description="{description}",
-    category="{category}",
     uses_gpu=False,
     tools_called=[],
 )
@@ -277,6 +285,8 @@ class {class_name}(Generator):
     \"\"\"
     {description}
     \"\"\"
+
+    input_type = GeneratorInputType.{input_type_member}
 
     def __init__(self, config: {config_class}):
         super().__init__(config)
@@ -290,12 +300,18 @@ class {class_name}(Generator):
 ```
 
 ## Conventions
-- Implement `_sample()`, not `sample()`; the base class validates assignment and calls `_sample()`
-- Use `self.segment` for single-target generators, or `self.segments` for tied multi-target generators
-- `_sample()` modifies `proposal_sequences` **in-place**, returns None
-- Use `@final` decorator to prevent subclassing
-- Categories: "mutation" (refine), "autoregressive" (generate), "inverse_folding" (structure→sequence)
-- File goes in `proto_language/language/generator/`
+- Implement `_sample()`, not `sample()`; the base class validates assignment and calls `_sample()`.
+- Use `self.segment` for single-target generators, or `self.segments` for tied multi-target generators.
+- `_sample()` modifies `proposal_sequences` **in-place**, returns None.
+- Use `@final` decorator to prevent subclassing.
+- Declare `input_type` as a classvar; category is auto-derived. Map category → input_type:
+  - `"mutation"` → `GeneratorInputType.STARTING_SEQUENCE` (segment must carry a starting sequence)
+  - `"autoregressive"` → `GeneratorInputType.PROMPT` (config.prompts or pipeline-supplied)
+  - `"inverse_folding"` → `GeneratorInputType.STRUCTURE` (config.structure_inputs or pipeline-supplied)
+  - `"gradient"` → `GeneratorInputType.LOGITS` (consumed from an upstream GradientOptimizer stage)
+- For generators that take dynamic conditioning data via CyclingOptimizer, the conditioning kwarg
+  must be the first non-self positional argument of `_sample()`.
+- File goes in `proto_language/language/generator/`.
 """
 
     return [Message(template, role="user")]
