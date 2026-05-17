@@ -1,7 +1,9 @@
 """Main client entrypoint."""
 
+import hashlib
 import os
 import platform
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
@@ -9,9 +11,9 @@ import httpx
 from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
-from proto_client.assets import AssetsNamespace
+from proto_client.assets import AssetsNamespace, set_default_assets_namespace
 from proto_client.errors import from_response
-from proto_client.models import MeResponse
+from proto_client.models import AssetRef, MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
 
@@ -93,9 +95,8 @@ class ProtoClient:
 
         self.tools = ToolsNamespace(tools_http)
         self.runs = RunsNamespace(runs_http)
-        # Single download namespace; routes per request by URL origin against the
-        # configured httpx clients (each ref carries its own absolute fetch URL).
         self.assets = AssetsNamespace([tools_http, runs_http])
+        set_default_assets_namespace(self.assets)
         self._runs_http = runs_http
         self._clients: list[httpx.Client] = [tools_http, runs_http]
 
@@ -111,8 +112,47 @@ class ProtoClient:
             raise from_response(resp)
         return MeResponse.model_validate(resp.json())
 
+    def export_program(self, program: Any, path: str | Path, *, format: str = "csv") -> Path:
+        """Export a proto-language ``Program`` to *path*, downloading AssetRef-referenced bytes.
+
+        Writes::
+
+            <path>/
+            ├── sequences.<format>    constraints.<format>    constructs.<format>    optimization.<format>
+            ├── sequences.fasta
+            └── assets/                file names use res<result_idx>_con<construct_idx>_seg<segment_idx>:
+                ├── res{i}_con{c}_seg{s}_structure.{pdb|cif}    written from Sequence.structure
+                ├── res{i}_con{c}_seg{s}_logits.npy             written from Sequence.logits via np.save
+                └── <asset_id>.<ext>                       downloaded AssetRefs
+
+        AssetRef cells anywhere in constraint / generator / metadata are downloaded
+        to ``assets/`` and rewritten to ``"assets/<file>"`` strings before
+        proto-language writes the tables.
+        """
+        try:
+            from proto_language.utils.export import (  # type: ignore[import-not-found, unused-ignore]
+                write_results_folder,
+            )
+        except ImportError as e:
+            raise RuntimeError("export_program requires proto-language to be installed alongside proto-client.") from e
+
+        out_dir = Path(path)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = out_dir / "assets"
+        assets_dir.mkdir(exist_ok=True)
+
+        results = program.extract_results(program.energy_scores)
+        seen: dict[str, str] = {}
+        results = _materialize_assetrefs(results, self.assets, assets_dir, seen)
+
+        return Path(write_results_folder(results=results, path=out_dir, format=format))
+
     def close(self) -> None:
         """Close all underlying HTTP clients."""
+        import proto_client.assets as _assets_mod
+
+        if _assets_mod._default_assets is self.assets:
+            _assets_mod._default_assets = None
         first_error: BaseException | None = None
         for c in self._clients:
             try:
@@ -129,3 +169,59 @@ class ProtoClient:
 
     def __exit__(self, *args: Any) -> None:
         self.close()
+
+
+def _materialize_assetrefs(
+    value: Any,
+    assets_ns: AssetsNamespace,
+    assets_dir: Path,
+    seen: dict[str, str],
+) -> Any:
+    """Recursively replace AssetRef-shaped dicts (or typed AssetRef instances) with ``"assets/<file>"`` strings.
+
+    Downloads each unique ``asset_id`` once via *assets_ns* and writes to *assets_dir*.
+    Filename collisions across distinct ids are disambiguated with a sha256 suffix.
+    HTTP failures yield a 0-byte ``<name>.missing`` placeholder so a single bad asset
+    doesn't abort the whole export.
+    """
+    ref = _coerce_to_assetref(value)
+    if ref is not None:
+        if ref.id in seen:
+            return f"assets/{seen[ref.id]}"
+        filename = _resolve_filename_collision(ref.suggested_filename(), ref.id, set(seen.values()))
+        dest = assets_dir / filename
+        try:
+            dest.write_bytes(assets_ns.get(ref))
+        except Exception:
+            filename = _resolve_filename_collision(filename + ".missing", ref.id, set(seen.values()))
+            dest = assets_dir / filename
+            dest.write_bytes(b"")
+        seen[ref.id] = filename
+        return f"assets/{filename}"
+    if isinstance(value, dict):
+        return {k: _materialize_assetrefs(v, assets_ns, assets_dir, seen) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_materialize_assetrefs(v, assets_ns, assets_dir, seen) for v in value]
+    return value
+
+
+def _coerce_to_assetref(value: Any) -> AssetRef | None:
+    """Return a typed AssetRef when *value* is one already, or when its dict shape matches; else None."""
+    if isinstance(value, AssetRef):
+        return value
+    if (
+        isinstance(value, dict)
+        and isinstance(value.get("id"), str)
+        and value.get("kind") in ("output", "reference_db", "user_upload")
+    ):
+        return AssetRef.model_validate(value)
+    return None
+
+
+def _resolve_filename_collision(filename: str, asset_id: str, taken: set[str]) -> str:
+    """If *filename* is already in *taken* under a different id, append an 8-hex sha256 suffix."""
+    if filename not in taken:
+        return filename
+    stem, suffix = PurePosixPath(filename).stem, PurePosixPath(filename).suffix
+    short = hashlib.sha256(asset_id.encode()).hexdigest()[:8]
+    return f"{stem}_{short}{suffix}"

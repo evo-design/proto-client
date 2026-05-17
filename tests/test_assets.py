@@ -206,3 +206,167 @@ async def test_async_download_parity(tmp_path: Path) -> None:
     ) as http:
         out = await AsyncAssetsNamespace([http]).download(_ref(), tmp_path / "x")
     assert out.read_bytes() == b"async-bytes"
+
+
+# =============================================================================
+# AssetRef instance methods + default-namespace plumbing
+# =============================================================================
+
+
+def test_suggested_filename_prefers_filename_field_then_mime_ext() -> None:
+    explicit = AssetRef(id="asset_x", kind="output", filename="my.pdb")
+    assert explicit.suggested_filename() == "my.pdb"
+
+    pdb = AssetRef(id="asset_x", kind="output", mime_type="chemical/x-pdb")
+    assert pdb.suggested_filename() == "asset_x.pdb"
+
+    unknown = AssetRef(id="asset_x", kind="output", mime_type="x/unknown")
+    assert unknown.suggested_filename() == "asset_x"
+
+    # Path traversal via the filename field is neutralized.
+    traversal = AssetRef(id="asset_x", kind="output", filename="../../etc/passwd", mime_type="chemical/x-pdb")
+    assert traversal.suggested_filename() == "passwd"
+
+    # Bare `.` / `..` fall back to the id-based name.
+    bare = AssetRef(id="asset_x", kind="output", filename="..", mime_type="chemical/x-pdb")
+    assert bare.suggested_filename() == "asset_x.pdb"
+
+
+def test_ext_for_mime_covers_common_types() -> None:
+    from proto_client._assets import ext_for_mime
+
+    assert ext_for_mime("chemical/x-pdb") == ".pdb"
+    assert ext_for_mime("chemical/x-cif") == ".cif"
+    assert ext_for_mime("application/json+gzip") == ".json.gz"
+    assert ext_for_mime("application/vnd.foo+json") == ".json"
+    assert ext_for_mime("application/x-bar+gzip") == ".gz"
+    assert ext_for_mime(None) == ""
+    assert ext_for_mime("x/unknown") == ""
+
+
+def test_repr_html_includes_id_mime_and_size_and_escapes_against_xss() -> None:
+    ref = AssetRef(
+        id="asset_abc",
+        kind="output",
+        mime_type="chemical/x-pdb",
+        size_bytes=12_345,
+        url="https://api.test/api/v1/assets/asset_abc",
+    )
+    rendered = ref._repr_html_()
+    assert "asset_abc" in rendered
+    assert "chemical/x-pdb" in rendered
+    assert "12.3 KB" in rendered
+    assert 'href="https://api.test' in rendered
+
+    # XSS: a tampered URL must not break out of the href attribute.
+    malicious = AssetRef(
+        id="<script>alert(1)</script>",
+        kind="output",
+        url='" onclick="alert(1)',
+    )
+    rendered = malicious._repr_html_()
+    assert "<script>" not in rendered
+    assert '" onclick=' not in rendered
+    assert "&lt;script&gt;" in rendered
+
+
+def test_assetref_methods_require_default_namespace(tmp_path: Path) -> None:
+    """Without ProtoClient() / set_default_assets_namespace(), AssetRef.* raises clearly."""
+    import proto_client.assets as assets_mod
+
+    saved = assets_mod._default_assets
+    assets_mod._default_assets = None
+    try:
+        ref = AssetRef(id="asset_x", kind="output", url="https://api.test/api/v1/assets/asset_x")
+        with pytest.raises(RuntimeError, match="No default AssetsNamespace"):
+            ref.bytes()
+        with pytest.raises(RuntimeError, match="No default AssetsNamespace"):
+            ref.resolve(cache_dir=tmp_path)
+    finally:
+        assets_mod._default_assets = saved
+
+
+def test_resolve_uses_cache_dir_and_skips_redownload(tmp_path: Path) -> None:
+    """Second resolve() reuses the cached file — no second HTTP fetch."""
+    import proto_client.assets as assets_mod
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, content=b"PDB-BYTES")
+
+    saved = assets_mod._default_assets
+    with _sync(handler) as http:
+        ns = AssetsNamespace([http])
+        assets_mod.set_default_assets_namespace(ns)
+        try:
+            ref = AssetRef(
+                id="asset_x",
+                kind="output",
+                mime_type="chemical/x-pdb",
+                url="https://api.test/api/v1/assets/asset_x",
+            )
+            first = ref.resolve(cache_dir=tmp_path)
+            second = ref.resolve(cache_dir=tmp_path)
+        finally:
+            assets_mod._default_assets = saved
+
+    assert first == second == tmp_path / "asset_x.pdb"
+    assert first.read_bytes() == b"PDB-BYTES"
+    assert calls["n"] == 1  # cache hit on the second call
+
+
+def test_bytes_and_decode_route_through_default_namespace() -> None:
+    import proto_client.assets as assets_mod
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'{"k":1}')
+
+    saved = assets_mod._default_assets
+    with _sync(handler) as http:
+        assets_mod.set_default_assets_namespace(AssetsNamespace([http]))
+        try:
+            ref = AssetRef(
+                id="asset_x",
+                kind="output",
+                mime_type="application/json",
+                url="https://api.test/api/v1/assets/asset_x",
+            )
+            assert ref.bytes() == b'{"k":1}'
+            assert ref.decode() == {"k": 1}
+        finally:
+            assets_mod._default_assets = saved
+
+
+def test_download_to_cache_validates_dict_input(tmp_path: Path) -> None:
+    """download_to_cache accepts the JSON-dict form of an AssetRef, not just the model."""
+    import proto_client.assets as assets_mod
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"raw-bytes")
+
+    saved = assets_mod._default_assets
+    with _sync(handler) as http:
+        assets_mod.set_default_assets_namespace(AssetsNamespace([http]))
+        try:
+            ref_dict = {
+                "id": "asset_y",
+                "kind": "output",
+                "mime_type": "chemical/x-pdb",
+                "url": "https://api.test/api/v1/assets/asset_y",
+            }
+            path = assets_mod.download_to_cache(ref_dict, cache_dir=tmp_path)
+        finally:
+            assets_mod._default_assets = saved
+
+    assert path == tmp_path / "asset_y.pdb"
+    assert path.read_bytes() == b"raw-bytes"
+
+
+def test_default_cache_dir_honours_env(monkeypatch, tmp_path: Path) -> None:
+    """PROTO_ASSET_CACHE env var overrides the default ~/.cache/evo-design/assets location."""
+    import proto_client.assets as assets_mod
+
+    monkeypatch.setenv("PROTO_ASSET_CACHE", str(tmp_path / "custom"))
+    assert assets_mod.default_cache_dir() == tmp_path / "custom"

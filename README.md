@@ -96,6 +96,30 @@ async with AsyncProtoClient(api_key="...") as client:
     pdb_text = await client.assets.decode(pdb_output)
 ```
 
+### Exporting a run's results to a folder
+
+There are two routes depending on where the program ran:
+
+| Where the program ran | Use | What you get |
+|---|---|---|
+| Locally in Python (`program.run()`) with maybe-cloud tool dispatches | `client.export_program(program, "out/")` | Folder with 4 CSV tables + `sequences.fasta` + `assets/`; writes local `seq.structure` / `seq.logits` from the in-memory program and downloads any AssetRefs found in metadata |
+| On the server (submitted via `client.runs.create(...)`) | `client.runs.export(run_id, "out.zip")` | Server-built zip with 4 CSV tables + FASTA + `program.json` + `manifest.json` + `assets/` |
+
+The two cover non-overlapping data. The local route needs the live `Program` object (because `seq.structure` / `seq.logits` only exist client-side). The server route needs a `run_id` (because the results live in the API database). Pick by which one you have.
+
+```python
+# Local Program (proto-language installed alongside proto-client)
+program = Program(...)
+program.run()
+client.export_program(program, "out/")
+
+# Server-side Run
+run = client.runs.run(program_data=...)  # creates and polls to terminal status
+client.runs.export(run.id, "out.zip")
+```
+
+For per-asset downloads (when you just want one PDB, not the whole bundle), use `client.assets.download(ref, path)` or `ref.resolve()`.
+
 ## Using with AI Agents (MCP)
 
 Proto Bio exposes an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.

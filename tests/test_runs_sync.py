@@ -62,6 +62,63 @@ def test_sync_create_and_get():
     assert got.status.value == "running"
 
 
+def test_sync_export_saves_zip_with_stage_idx_and_maps_errors(tmp_path):
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        if "missing" in request.url.path:
+            return httpx.Response(404, json={"detail": "Run not found"})
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    ns = make_sync_ns(handler)
+    out = ns.export("r1", tmp_path / "out.zip", stage_idx=2)
+    assert captured["path"] == "/api/v1/runs/r1/export"
+    assert captured["query"] == {"stage_idx": "2"}
+    assert out == tmp_path / "out.zip"
+    assert out.read_bytes() == b"PK\x03\x04zip-bytes"
+
+    with pytest.raises(ProtoAPIError):
+        ns.export("missing", tmp_path / "missing.zip")
+
+
+def test_sync_export_creates_missing_parent_directories(tmp_path):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    out = make_sync_ns(handler).export("r1", tmp_path / "a" / "b" / "out.zip")
+    assert out.read_bytes() == b"PK\x03\x04zip-bytes"
+
+
+async def test_async_export_saves_zip_with_stage_idx_and_maps_errors(tmp_path):
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        if "missing" in request.url.path:
+            return httpx.Response(404, json={"detail": "Run not found"})
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    ns = make_async_ns(handler)
+    out = await ns.export("r1", tmp_path / "out.zip", stage_idx=2)
+    assert captured["path"] == "/api/v1/runs/r1/export"
+    assert captured["query"] == {"stage_idx": "2"}
+    assert out.read_bytes() == b"PK\x03\x04zip-bytes"
+
+    with pytest.raises(ProtoAPIError):
+        await ns.export("missing", tmp_path / "missing.zip")
+
+
+async def test_async_export_creates_missing_parent_directories(tmp_path):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    out = await make_async_ns(handler).export("r1", tmp_path / "a" / "b" / "out.zip")
+    assert out.read_bytes() == b"PK\x03\x04zip-bytes"
+
+
 def test_sync_create_with_webhook():
     captured: dict[str, Any] = {}
 

@@ -9,6 +9,7 @@ import logging
 import time
 from asyncio import sleep as _sleep
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -35,6 +36,12 @@ from proto_client.models import (
 )
 
 logger = logging.getLogger("proto_client.runs")
+
+
+def _save_zip(destination: Path, content: bytes) -> None:
+    """Helper isolates the disk write so ruff's ASYNC230/240 stays quiet on the caller."""
+    destination.write_bytes(content)
+
 
 # Terminal run statuses — polling stops when a run reaches any of these.
 _TERMINAL_STATUSES = frozenset({RunStatus.completed, RunStatus.failed, RunStatus.cancelled})
@@ -90,6 +97,20 @@ class AsyncRunsNamespace:
         if resp.is_error:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
+
+    async def export(self, run_id: str, path: str | Path, *, stage_idx: int | None = None) -> Path:
+        """GET /api/v1/runs/{run_id}/export — save the results zip to *path* (creates parent dirs)."""
+        url = f"/api/v1/runs/{run_id}/export"
+        params = {"stage_idx": stage_idx} if stage_idx is not None else None
+        logger.debug("GET %s params=%s", url, params)
+        resp = await self._http.get(url, params=params)
+        logger.debug("GET %s -> %d", url, resp.status_code)
+        if resp.is_error:
+            raise from_response(resp)
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        _save_zip(destination, resp.content)
+        return destination
 
     async def cancel(self, run_id: str) -> CancelRunResponse:
         """POST /api/v1/runs/{run_id}/cancel — cancel a running job.

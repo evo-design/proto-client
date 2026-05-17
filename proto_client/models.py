@@ -1,19 +1,18 @@
 """Response models for the Proto Bio SDK.
 
-These mirror the wire shapes returned by ``the tools API`` and
-``the runs API`` 1:1. They are intentionally thin — no business
-logic — so they can be regenerated from OpenAPI in the future without
-behaviour drift.
+Thin wire-shape mirrors of ``the tools API`` / ``the runs API``.
+:class:`AssetRef` is the deliberate exception — it carries instance methods
+(``resolve``, ``bytes``, ``decode``, ``_repr_html_``) so callers don't have
+to thread a client into every code site that touches a ref.
 
-Tool-specific input/output dicts are left as ``dict[str, Any]`` because every
-tool has its own ``Input``/``Config``/``Output`` models in ``proto-tools``;
-a single static type here would be a lie. Power users can pass ``output_model``
-to :meth:`proto_client.tools.ToolsNamespace.run` to opt into a typed
-``.result`` per-call.
+Tool-specific input/output dicts stay ``dict[str, Any]``; pass ``output_model``
+to :meth:`proto_client.tools.ToolsNamespace.run` for a typed ``.result``.
 """
 
+import html
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field
@@ -80,9 +79,58 @@ class AssetRef(BaseModel):
     kind: Literal["output", "reference_db", "user_upload"]
     mime_type: str | None = None
     size_bytes: int | None = None
+    filename: str | None = None
     created_at: datetime | None = None
     expires_at: datetime | None = None
     url: str | None = None
+
+    def suggested_filename(self) -> str:
+        """Filename for local materialization, with path components stripped to prevent traversal."""
+        from proto_client._assets import ext_for_mime
+
+        if self.filename:
+            safe = Path(self.filename).name
+            if safe and safe not in (".", ".."):
+                return safe
+        safe_id = Path(self.id).name or self.id
+        return f"{safe_id}{ext_for_mime(self.mime_type)}"
+
+    def resolve(self, cache_dir: Path | None = None) -> Path:
+        """Download to a local cache (or reuse) and return the path. Requires a constructed ProtoClient."""
+        from proto_client.assets import download_to_cache
+
+        return download_to_cache(self, cache_dir)
+
+    def bytes(self) -> bytes:
+        """Fetch raw asset bytes into memory via the default ProtoClient."""
+        from proto_client.assets import get_default_assets_namespace
+
+        return get_default_assets_namespace().get(self)
+
+    def decode(self) -> Any:
+        """Fetch and decode by MIME type via the default ProtoClient."""
+        from proto_client.assets import get_default_assets_namespace
+
+        return get_default_assets_namespace().decode(self)
+
+    def _repr_html_(self) -> str:
+        """Compact inline card for Jupyter; all interpolated values escaped against XSS."""
+        size = self.size_bytes
+        if size is None:
+            size_str = ""
+        elif size >= 1_000_000:
+            size_str = f" · {size / 1_000_000:.1f} MB"
+        elif size >= 1_000:
+            size_str = f" · {size / 1_000:.1f} KB"
+        else:
+            size_str = f" · {size} B"
+        mime = html.escape(self.mime_type or "unknown")
+        link = f'<a href="{html.escape(self.url, quote=True)}" target="_blank">download</a>' if self.url else "(no url)"
+        return (
+            '<div style="font-family:monospace;border-left:3px solid #888;padding:4px 8px">'
+            f"<strong>AssetRef</strong> · {mime}{size_str} · {link}<br>"
+            f"<small>{html.escape(self.id)}</small></div>"
+        )
 
 
 class ToolInfo(BaseModel):

@@ -41,6 +41,35 @@ def decode_asset_bytes(ref_or_dict: AssetLike, data: bytes) -> Any:
     return data
 
 
+_EXT_BY_MIME = {
+    "chemical/x-pdb": ".pdb",
+    "chemical/x-cif": ".cif",
+    "chemical/x-mmcif": ".cif",
+    "chemical/x-fasta": ".fasta",
+    "application/json": ".json",
+    "application/json+gzip": ".json.gz",
+    "text/csv": ".csv",
+    "text/plain": ".txt",
+}
+
+
+def ext_for_mime(mime_type: str | None) -> str:
+    """Best-effort filename extension for an asset MIME type.
+
+    Returns ``""`` (empty) for unknown types so callers can fall back to the
+    asset id alone.
+    """
+    if not mime_type:
+        return ""
+    if mime_type in _EXT_BY_MIME:
+        return _EXT_BY_MIME[mime_type]
+    if mime_type.endswith("+json"):
+        return ".json"
+    if mime_type.endswith("+gzip"):
+        return ".gz"
+    return ""
+
+
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
