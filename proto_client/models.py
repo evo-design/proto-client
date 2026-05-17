@@ -35,6 +35,7 @@ __all__ = [
     "CancelRunResponse",
     "ConstraintResult",
     "ConstraintSpec",
+    "ConstructListItem",
     "ConstructResult",
     "CreateRunResponse",
     "GeneratorSpec",
@@ -44,9 +45,12 @@ __all__ = [
     "PaginatedTimepoints",
     "ProposalResult",
     "ResultEntry",
+    "ResultEntryListItem",
     "RunResponse",
     "RunStatus",
+    "RunTimepointListItem",
     "RunTimepointResponse",
+    "SegmentListItem",
     "SegmentResult",
     "StageMetrics",
     "StageResult",
@@ -341,14 +345,44 @@ class ResultEntry(BaseModel):
     constructs: list[ConstructResult]
 
 
+class SegmentListItem(BaseModel):
+    """Slim per-segment row without per-constraint scores."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    length: int
+    sequence: str
+
+
+class ConstructListItem(BaseModel):
+    """Slim per-construct row without per-constraint scores."""
+
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    type: str
+    segments: list[SegmentListItem]
+
+
+class ResultEntryListItem(BaseModel):
+    """Slim per-result row without per-constraint scores."""
+
+    model_config = ConfigDict(frozen=True)
+
+    result_idx: int
+    energy_score: float | None = None
+    constructs: list[ConstructListItem]
+
+
 class StageResult(BaseModel):
-    """Results for one optimizer stage."""
+    """Slim per-stage rollup returned by ``GET /runs/{id}``."""
 
     model_config = ConfigDict(frozen=True)
 
     optimizer_stage_idx: int
     best_result_idx: int
-    results: list[ResultEntry]
+    results: list[ResultEntryListItem]
 
 
 class CreateRunResponse(BaseModel):
@@ -472,12 +506,27 @@ class StageMetrics(BaseModel):
     points: list[MetricPoint]
 
 
-class PaginatedTimepoints(BaseModel):
-    """One page of full timepoint rows plus the run-wide total."""
+class RunTimepointListItem(BaseModel):
+    """Slim timepoint row returned by ``GET /runs/{id}/timepoints``."""
 
     model_config = ConfigDict(frozen=True)
 
-    items: list[RunTimepointResponse]
+    id: int
+    run_id: str
+    optimizer_stage_idx: int
+    timepoint: int
+    best_result_idx: int
+    results: list[ResultEntryListItem]
+    optimizer_metadata: dict[str, Any] | None = None
+    created_at: datetime
+
+
+class PaginatedTimepoints(BaseModel):
+    """One page of slim timepoint rows plus the run-wide total."""
+
+    model_config = ConfigDict(frozen=True)
+
+    items: list[RunTimepointListItem]
     total: int
     page: int
     page_size: int

@@ -193,7 +193,7 @@ class RunsNamespace:
         page: int = 0,
         page_size: int = 50,
     ) -> PaginatedTimepoints:
-        """GET /api/v1/runs/{run_id}/timepoints — one page of full timepoint rows."""
+        """GET /api/v1/runs/{run_id}/timepoints — one page of slim timepoint rows."""
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if stage is not None:
             params["optimizer_stage_idx"] = stage
