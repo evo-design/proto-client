@@ -27,10 +27,9 @@ logger = logging.getLogger("proto_client.assets")
 class AssetsNamespace:
     """Fetch API-readable output assets via the URL stamped on each ``AssetRef``.
 
-    A single namespace serves refs from any configured backend; routing is by
-    URL origin (matched against each client's ``base_url``). Upload allocation,
-    reference database, missing-URL, and direct-storage refs are not generally
-    fetchable through this namespace.
+    A single namespace serves refs from configured Proto API origins; routing is
+    by URL origin matched against each client's ``base_url``. Refs without an
+    API-readable URL are not generally fetchable through this namespace.
     """
 
     def __init__(self, http_clients: list[httpx.Client]) -> None:

@@ -119,7 +119,7 @@ def test_origin_match_ignores_default_ports() -> None:
 
 
 def test_redirect_target_error_raises_storage_error_not_auth_error() -> None:
-    """S3 403 (expired presigned URL) must not surface as ProtoAuthError."""
+    """A redirected asset fetch failure must not surface as ProtoAuthError."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.test":

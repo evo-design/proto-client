@@ -52,9 +52,9 @@ the configured Proto API origins. They are intended for `kind="output"` refs
 returned in tool-job or run results.
 
 Not every `AssetRef` is fetchable: upload allocation refs, reference database
-refs without an API URL, refs missing `url`, and direct storage URLs are
-rejected. The client fetches through the Proto API first, then follows storage
-redirects with authentication headers stripped.
+refs without an API-readable URL, refs missing `url`, and non-Proto URLs are
+rejected. The client fetches through authenticated Proto API origins and strips
+authentication headers before following any redirect away from those origins.
 
 | Method | Return value | MIME handling | Use when |
 |---|---|---|---|

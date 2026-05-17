@@ -50,8 +50,8 @@ class ProtoClient:
                 *retry_config* is provided.
             retry_config: Advanced retry configuration. Overrides *max_retries*.
             app_user_id: End-user identifier sent as ``x-app-user-id`` on every request.
-                Scopes server-side owner-id boundaries (S3 prefix, asset ACL) to this
-                identity. Omit when the caller is acting at the platform/admin level.
+                Scopes server-side ownership and asset access checks to this identity.
+                Omit when the caller is acting at the platform/admin level.
         """
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
