@@ -112,8 +112,18 @@ class ProtoClient:
             raise from_response(resp)
         return MeResponse.model_validate(resp.json())
 
-    def export_program(self, program: Any, path: str | Path, *, format: str = "csv") -> Path:
+    def export_program(
+        self,
+        program: Any,
+        path: str | Path | None = None,
+        *,
+        format: str = "csv",
+        project: str | None = None,
+    ) -> Path:
         """Export a proto-language ``Program`` to *path*, downloading AssetRef-referenced bytes.
+
+        ``path=None`` names the folder per the unified convention
+        (``{project}__{YYYY-MM-DD_HHMMSS}``) under CWD.
 
         Writes::
 
@@ -136,7 +146,9 @@ class ProtoClient:
         except ImportError as e:
             raise RuntimeError("export_program requires proto-language to be installed alongside proto-client.") from e
 
-        out_dir = Path(path)
+        from proto_client._export_names import build_export_name
+
+        out_dir = Path.cwd() / build_export_name(project=project) if path is None else Path(path)
         out_dir.mkdir(parents=True, exist_ok=True)
         assets_dir = out_dir / "assets"
         assets_dir.mkdir(exist_ok=True)

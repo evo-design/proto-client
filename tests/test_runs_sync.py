@@ -119,6 +119,101 @@ async def test_async_export_creates_missing_parent_directories(tmp_path):
     assert out.read_bytes() == b"PK\x03\x04zip-bytes"
 
 
+def test_sync_export_directory_path_appends_server_filename(tmp_path):
+    """A directory path is treated as a destination dir, not the file itself."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04zip-bytes",
+            headers={"content-disposition": 'attachment; filename="auto.zip"'},
+        )
+
+    out = make_sync_ns(handler).export("r1", tmp_path)
+    assert out == tmp_path / "auto.zip"
+
+
+def test_sync_export_path_none_resolves_server_filename_else_convention_fallback(tmp_path, monkeypatch):
+    """With path=None: use server's filename* (RFC 5987 non-ASCII case) or the convention fallback when absent."""
+    monkeypatch.chdir(tmp_path)
+
+    def with_disposition(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04zip-bytes",
+            headers={
+                "content-disposition": (
+                    'attachment; filename="Etude__2026-05-18_143005_stage-0.zip"; '
+                    "filename*=UTF-8''%C3%89tude__2026-05-18_143005_stage-0.zip"
+                ),
+            },
+        )
+
+    out = make_sync_ns(with_disposition).export("r1")
+    assert out == tmp_path / "Étude__2026-05-18_143005_stage-0.zip"
+
+    def without_disposition(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    out = make_sync_ns(without_disposition).export("r1", project="My Project", stage_idx=2)
+    assert out.parent == tmp_path
+    assert out.name.startswith("My Project__")
+    assert out.name.endswith("_stage-2.zip")
+
+
+def test_sync_export_sanitizes_path_traversal_in_server_filename(tmp_path, monkeypatch):
+    """A hostile server can't escape CWD via ../ in Content-Disposition."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04zip-bytes",
+            headers={"content-disposition": "attachment; filename*=UTF-8''..%2F..%2Fetc%2Fevil.zip"},
+        )
+
+    monkeypatch.chdir(tmp_path)
+    out = make_sync_ns(handler).export("r1")
+    assert out.resolve().is_relative_to(tmp_path.resolve())
+    assert "/" not in out.name
+
+
+async def test_async_export_directory_path_appends_server_filename(tmp_path):
+    """Async mirror: directory path is treated as a destination dir."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04zip-bytes",
+            headers={"content-disposition": 'attachment; filename="auto.zip"'},
+        )
+
+    out = await make_async_ns(handler).export("r1", tmp_path)
+    assert out == tmp_path / "auto.zip"
+
+
+async def test_async_export_path_none_resolves_server_filename_else_convention_fallback(tmp_path, monkeypatch):
+    """Async mirror: path=None uses server's filename or the convention fallback."""
+    monkeypatch.chdir(tmp_path)
+
+    def with_disposition(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04zip-bytes",
+            headers={"content-disposition": 'attachment; filename="proj__2026-05-18_143005_stage-0.zip"'},
+        )
+
+    out = await make_async_ns(with_disposition).export("r1")
+    assert out == tmp_path / "proj__2026-05-18_143005_stage-0.zip"
+
+    def without_disposition(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"PK\x03\x04zip-bytes")
+
+    out = await make_async_ns(without_disposition).export("r1", project="My Project", stage_idx=2)
+    assert out.parent == tmp_path
+    assert out.name.startswith("My Project__")
+    assert out.name.endswith("_stage-2.zip")
+
+
 def test_sync_create_with_webhook():
     captured: dict[str, Any] = {}
 

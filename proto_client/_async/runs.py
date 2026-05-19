@@ -6,15 +6,18 @@ This module is the source of truth. The sync counterpart
 """
 
 import logging
+import re
 import time
 from asyncio import sleep as _sleep
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 
 from proto_client._async._ndjson import _acollect_logs_page, _aiter_ndjson_records
+from proto_client._export_names import build_export_name, sanitize_field
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
 from proto_client.models import (
     CancelRunResponse,
@@ -41,6 +44,43 @@ logger = logging.getLogger("proto_client.runs")
 def _save_zip(destination: Path, content: bytes) -> None:
     """Helper isolates the disk write so ruff's ASYNC230/240 stays quiet on the caller."""
     destination.write_bytes(content)
+
+
+_DISPOSITION_FILENAME_STAR = re.compile(r"filename\*\s*=\s*UTF-8''([^\";]+)", re.IGNORECASE)
+_DISPOSITION_FILENAME = re.compile(r'filename\s*=\s*"?([^";]+)"?', re.IGNORECASE)
+
+
+def _filename_from_disposition(header: str | None) -> str | None:
+    """Parse Content-Disposition, preferring RFC 5987 filename* over plain filename."""
+    if not header:
+        return None
+    star = _DISPOSITION_FILENAME_STAR.search(header)
+    if star:
+        try:
+            return unquote(star.group(1)).strip()
+        except ValueError:
+            pass
+    plain = _DISPOSITION_FILENAME.search(header)
+    return plain.group(1).strip() if plain else None
+
+
+def _resolve_export_destination(
+    path: str | Path | None,
+    server_filename: str | None,
+    *,
+    project: str | None,
+    stage_idx: int | None,
+) -> Path:
+    """Pick destination: file path verbatim; ``None``/dir → sanitized server filename (or convention fallback)."""
+    discriminator = f"_stage-{stage_idx}" if stage_idx is not None else None
+    safe_server = sanitize_field(server_filename)
+    fallback = safe_server or build_export_name(project=project, discriminator=discriminator, ext="zip")
+    if path is None:
+        return Path.cwd() / fallback
+    candidate = Path(path)
+    if candidate.is_dir() or (not candidate.exists() and candidate.suffix == ""):
+        return candidate / fallback
+    return candidate
 
 
 # Terminal run statuses — polling stops when a run reaches any of these.
@@ -98,8 +138,19 @@ class AsyncRunsNamespace:
             raise from_response(resp)
         return RunResponse.model_validate(resp.json())
 
-    async def export(self, run_id: str, path: str | Path, *, stage_idx: int | None = None) -> Path:
-        """GET /api/v1/runs/{run_id}/export — save the results zip to *path* (creates parent dirs)."""
+    async def export(
+        self,
+        run_id: str,
+        path: str | Path | None = None,
+        *,
+        stage_idx: int | None = None,
+        project: str | None = None,
+    ) -> Path:
+        """GET /api/v1/runs/{run_id}/export — save the results zip and return the on-disk path.
+
+        ``path=None`` or a directory uses the server's Content-Disposition filename
+        (falling back to the unified convention); a file path is written verbatim.
+        """
         url = f"/api/v1/runs/{run_id}/export"
         params = {"stage_idx": stage_idx} if stage_idx is not None else None
         logger.debug("GET %s params=%s", url, params)
@@ -107,7 +158,8 @@ class AsyncRunsNamespace:
         logger.debug("GET %s -> %d", url, resp.status_code)
         if resp.is_error:
             raise from_response(resp)
-        destination = Path(path)
+        server_filename = _filename_from_disposition(resp.headers.get("content-disposition"))
+        destination = _resolve_export_destination(path, server_filename, project=project, stage_idx=stage_idx)
         destination.parent.mkdir(parents=True, exist_ok=True)
         _save_zip(destination, resp.content)
         return destination
