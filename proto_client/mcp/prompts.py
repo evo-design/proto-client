@@ -129,7 +129,7 @@ Implement a custom constraint for the proto-language framework.
 
 import logging
 
-from proto_language.base_config import BaseConfig, ConfigField
+from proto_language.utils.base import BaseConfig, ConfigField
 from proto_language.language.core import Sequence
 from proto_language.language.constraint.constraint_registry import constraint
 from proto_language.utils import MAX_ENERGY
@@ -259,7 +259,7 @@ Implement a custom generator for the proto-language framework.
 import logging
 from typing import final
 
-from proto_language.base_config import BaseConfig, ConfigField
+from proto_language.utils.base import BaseConfig, ConfigField
 from proto_language.language.core import Generator, GeneratorInputType, Segment
 from proto_language.language.generator.generator_registry import generator
 

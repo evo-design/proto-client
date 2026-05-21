@@ -140,7 +140,7 @@ class ProtoClient:
         proto-language writes the tables.
         """
         try:
-            from proto_language.utils.export import (  # type: ignore[import-not-found, unused-ignore]
+            from proto_language.utils.io import (  # type: ignore[import-not-found, unused-ignore]
                 write_results_folder,
             )
         except ImportError as e:
