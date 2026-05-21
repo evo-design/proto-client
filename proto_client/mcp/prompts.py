@@ -130,8 +130,8 @@ Implement a custom constraint for the proto-language framework.
 import logging
 
 from proto_language.utils.base import BaseConfig, ConfigField
-from proto_language.language.core import Sequence
-from proto_language.language.constraint.constraint_registry import constraint
+from proto_language.core import Sequence
+from proto_language.constraint.constraint_registry import constraint
 from proto_language.utils import MAX_ENERGY
 
 logger = logging.getLogger(__name__)
@@ -175,7 +175,7 @@ def {func_name}_constraint(
 - Scores: 0.0 = perfect, 1.0 = worst, MAX_ENERGY for failure
 - Store computed values in `seq._metadata["metric_name"]`
 - Use `ConfigField` (not `Field`) for config parameters
-- File goes in `proto_language/language/constraint/`
+- File goes in `proto_language/constraint/`
 """
 
     return [Message(template, role="user")]
@@ -260,8 +260,8 @@ import logging
 from typing import final
 
 from proto_language.utils.base import BaseConfig, ConfigField
-from proto_language.language.core import Generator, GeneratorInputType, Segment
-from proto_language.language.generator.generator_registry import generator
+from proto_language.core import Generator, GeneratorInputType, Segment
+from proto_language.generator.generator_registry import generator
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +311,7 @@ class {class_name}(Generator):
   - `"gradient"` → `GeneratorInputType.LOGITS` (consumed from an upstream GradientOptimizer stage)
 - For generators that take dynamic conditioning data via CyclingOptimizer, the conditioning kwarg
   must be the first non-self positional argument of `_sample()`.
-- File goes in `proto_language/language/generator/`.
+- File goes in `proto_language/generator/`.
 """
 
     return [Message(template, role="user")]
