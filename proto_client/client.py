@@ -11,7 +11,7 @@ import httpx
 from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
-from proto_client.assets import AssetsNamespace, set_default_assets_namespace
+from proto_client.assets import AssetsNamespace
 from proto_client.errors import from_response
 from proto_client.models import AssetRef, MeResponse
 from proto_client.runs import RunsNamespace
@@ -79,7 +79,6 @@ class ProtoClient:
         self.tools = ToolsNamespace(tools_http)
         self.runs = RunsNamespace(runs_http)
         self.assets = AssetsNamespace([tools_http, runs_http])
-        set_default_assets_namespace(self.assets)
         self._runs_http = runs_http
         self._clients: list[httpx.Client] = [tools_http, runs_http]
 
@@ -144,10 +143,6 @@ class ProtoClient:
 
     def close(self) -> None:
         """Close all underlying HTTP clients."""
-        import proto_client.assets as _assets_mod
-
-        if _assets_mod._default_assets is self.assets:
-            _assets_mod._default_assets = None
         first_error: BaseException | None = None
         for c in self._clients:
             try:

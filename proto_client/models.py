@@ -1,9 +1,9 @@
 """Response models for the Proto Bio SDK.
 
 Thin wire-shape mirrors of ``the tools API`` / ``the runs API``.
-:class:`AssetRef` is the deliberate exception — it carries instance methods
-(``resolve``, ``bytes``, ``decode``, ``_repr_html_``) so callers don't have
-to thread a client into every code site that touches a ref.
+:class:`AssetRef` is a pure data model carrying only ``_repr_html_`` (a Jupyter
+card); fetching an asset's bytes goes through the ``client.assets`` namespace
+(``get`` / ``decode`` / ``download``), not the ref itself.
 
 Tool-specific input/output dicts stay ``dict[str, Any]``; pass ``output_model``
 to :meth:`proto_client.tools.ToolsNamespace.run` for a typed ``.result``.
@@ -98,24 +98,6 @@ class AssetRef(BaseModel):
                 return safe
         safe_id = Path(self.id).name or self.id
         return f"{safe_id}{ext_for_mime(self.mime_type)}"
-
-    def resolve(self, cache_dir: Path | None = None) -> Path:
-        """Download to a local cache (or reuse) and return the path. Requires a constructed ProtoClient."""
-        from proto_client.assets import download_to_cache
-
-        return download_to_cache(self, cache_dir)
-
-    def bytes(self) -> bytes:
-        """Fetch raw asset bytes into memory via the default ProtoClient."""
-        from proto_client.assets import get_default_assets_namespace
-
-        return get_default_assets_namespace().get(self)
-
-    def decode(self) -> Any:
-        """Fetch and decode by MIME type via the default ProtoClient."""
-        from proto_client.assets import get_default_assets_namespace
-
-        return get_default_assets_namespace().decode(self)
 
     def _repr_html_(self) -> str:
         """Compact inline card for Jupyter; all interpolated values escaped against XSS."""

@@ -118,7 +118,7 @@ run = client.runs.run(program_data=...)  # creates and polls to terminal status
 client.runs.export(run.id, "out.zip")
 ```
 
-For per-asset downloads (when you just want one PDB, not the whole bundle), use `client.assets.download(ref, path)` or `ref.resolve()`.
+For per-asset downloads (when you just want one PDB, not the whole bundle), use `client.assets.download(ref, path)`.
 
 ## Using with AI Agents (MCP)
 

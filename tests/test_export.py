@@ -12,7 +12,7 @@ import httpx
 import numpy as np
 
 from proto_client import ProtoClient
-from proto_client.assets import AssetsNamespace, set_default_assets_namespace
+from proto_client.assets import AssetsNamespace
 from proto_client.client import _coerce_to_assetref, _materialize_assetrefs, _resolve_filename_collision
 from proto_client.models import AssetRef
 
@@ -162,7 +162,6 @@ def test_export_program_writes_folder_layout(tmp_path: Path) -> None:
     mock_http = _mock_http(handler)
     try:
         client.assets = AssetsNamespace([mock_http])
-        set_default_assets_namespace(client.assets)
         program = _FakeProgram(_make_results_with_payloads())
         out = client.export_program(program, tmp_path / "out", format="csv")
     finally:
