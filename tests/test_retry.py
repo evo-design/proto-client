@@ -72,6 +72,11 @@ def _get(transport: RetryTransport) -> httpx.Response:
         return client.get(_URL)
 
 
+def _post(transport: RetryTransport, *, headers: dict[str, str] | None = None) -> httpx.Response:
+    with httpx.Client(transport=transport) as client:
+        return client.post(_URL, headers=headers)
+
+
 # ----------------------------------------------------------------------- config
 
 
@@ -216,3 +221,30 @@ def test_retry_after_capped_at_retry_after_max() -> None:
     )
     assert _get(transport).status_code == 200
     assert delays == [120.0]
+
+
+# ------------------------------------------------------- idempotency-gated POST retries
+
+
+def test_post_without_idempotency_key_not_retried_on_5xx() -> None:
+    # Non-idempotent POST: surface the first 5xx rather than risk a duplicate side effect.
+    transport, counter, delays = _sync_transport([_resp(503), _resp(200)], initial_delay=0.01)
+    assert _post(transport).status_code == 503
+    assert counter.n == 1
+    assert delays == []
+
+
+def test_post_without_idempotency_key_not_retried_on_network_error() -> None:
+    transport, counter, delays = _sync_transport([httpx.ConnectError("down"), _resp(200)], initial_delay=0.01)
+    with httpx.Client(transport=transport) as client:
+        with pytest.raises(httpx.ConnectError):
+            client.post(_URL)
+    assert counter.n == 1
+    assert delays == []
+
+
+def test_post_with_idempotency_key_is_retried() -> None:
+    # An Idempotency-Key opts the POST into safe retries (the backend dedupes on it).
+    transport, counter, _ = _sync_transport([_resp(503), _resp(200)], initial_delay=0.01)
+    assert _post(transport, headers={"Idempotency-Key": "k1"}).status_code == 200
+    assert counter.n == 2

@@ -5,6 +5,9 @@ failed requests are retried with exponential backoff + jitter. Retriable:
 429, 500, 502, 503, 504, and connection/read-timeout errors. Non-retriable
 client errors (400, 401, 403, 404, 409, 422) fall through unchanged — the
 caller will map them to typed errors via ``proto_client.errors.from_response``.
+Only idempotent methods (GET/HEAD/OPTIONS/PUT/DELETE) retry unconditionally; a
+POST retries only when it carries an ``Idempotency-Key``, so a lost response can
+never duplicate a side effect (a second run or tool job).
 
 On 429/503, if the server emits a ``Retry-After`` header we honor it (capped
 at ``retry_after_max``) instead of computed backoff. Conservative defaults
@@ -33,6 +36,17 @@ RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     httpx.TimeoutException,
     httpx.RemoteProtocolError,
 )
+
+# Methods safe to retry by RFC semantics. A POST is retried only when it carries an
+# Idempotency-Key, so a lost response can't create a duplicate run/job. the tools API
+# dedupes on the key; the runs API has no idempotency yet, so runs.create sends none
+# and is therefore never retried.
+_IDEMPOTENT_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+
+
+def _is_retriable_request(request: httpx.Request) -> bool:
+    """True if retrying *request* is side-effect-safe: idempotent method, or carries an Idempotency-Key."""
+    return request.method in _IDEMPOTENT_METHODS or "idempotency-key" in request.headers
 
 
 @dataclass(frozen=True)
@@ -106,9 +120,10 @@ def _delay_for_response(
 class RetryTransport(httpx.BaseTransport):
     """Sync retry wrapper. Delegates transport to ``wrapped``.
 
-    Arbitrary request headers — including ``x-app-user-id`` for per-user
-    rate-limit isolation — pass through unchanged; this transport never
-    inspects or mutates request headers.
+    Request headers pass through unmutated. The transport reads the method and
+    ``Idempotency-Key`` to decide whether a failed request is safe to retry (see
+    :func:`_is_retriable_request`); ``x-app-user-id`` and other headers are
+    forwarded untouched.
     """
 
     def __init__(
@@ -128,11 +143,17 @@ class RetryTransport(httpx.BaseTransport):
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         """Send the request, retrying retriable statuses/exceptions with backoff + jitter."""
         config = self._config
+        retriable = _is_retriable_request(request)
         attempt = 0
         while True:
             try:
                 response = self._wrapped.handle_request(request)
             except RETRYABLE_EXCEPTIONS:
+                if not retriable:
+                    logger.debug(
+                        "Not retrying non-idempotent %s %s (no Idempotency-Key)", request.method, request.url.path
+                    )
+                    raise
                 if attempt >= config.max_retries:
                     logger.warning(
                         "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
@@ -152,6 +173,14 @@ class RetryTransport(httpx.BaseTransport):
                 continue
 
             if response.status_code not in RETRYABLE_STATUS:
+                return response
+            if not retriable:
+                logger.debug(
+                    "Not retrying non-idempotent %s %s on %d (no Idempotency-Key)",
+                    request.method,
+                    request.url.path,
+                    response.status_code,
+                )
                 return response
             if attempt >= config.max_retries:
                 logger.warning(
@@ -198,11 +227,17 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         """Send the request, retrying retriable statuses/exceptions with backoff + jitter."""
         config = self._config
+        retriable = _is_retriable_request(request)
         attempt = 0
         while True:
             try:
                 response = await self._wrapped.handle_async_request(request)
             except RETRYABLE_EXCEPTIONS:
+                if not retriable:
+                    logger.debug(
+                        "Not retrying non-idempotent %s %s (no Idempotency-Key)", request.method, request.url.path
+                    )
+                    raise
                 if attempt >= config.max_retries:
                     logger.warning(
                         "Max retries (%d) exhausted for %s %s", config.max_retries, request.method, request.url.path
@@ -222,6 +257,14 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
                 continue
 
             if response.status_code not in RETRYABLE_STATUS:
+                return response
+            if not retriable:
+                logger.debug(
+                    "Not retrying non-idempotent %s %s on %d (no Idempotency-Key)",
+                    request.method,
+                    request.url.path,
+                    response.status_code,
+                )
                 return response
             if attempt >= config.max_retries:
                 logger.warning(

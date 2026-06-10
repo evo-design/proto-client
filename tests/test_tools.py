@@ -265,6 +265,29 @@ def test_run_output_model_with_none_result_raises(mock_http):
         ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01, output_model=Out)
 
 
+def test_run_auto_generates_idempotency_key(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "j1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("completed", completed=True))
+    ToolsNamespace(mock_http).run("blast", {"x": 1}, poll_interval=0.01)
+    key = mock_http.post.call_args.kwargs["headers"]["Idempotency-Key"]
+    assert len(key) == 32  # auto-generated uuid4().hex makes the submit POST retry-safe
+
+
+def test_run_preserves_explicit_idempotency_key(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "j1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("completed", completed=True))
+    ToolsNamespace(mock_http).run("blast", {"x": 1}, poll_interval=0.01, idempotency_key="mine")
+    assert mock_http.post.call_args.kwargs["headers"]["Idempotency-Key"] == "mine"
+
+
+def test_run_batch_auto_generates_idempotency_key(mock_http):
+    mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
+    mock_http.get.return_value = mock_response(job_payload("completed", completed=True, result={"items": []}))
+    ToolsNamespace(mock_http).run_batch("blast", [{"x": 1}], poll_interval=0.01)
+    key = mock_http.post.call_args.kwargs["headers"]["Idempotency-Key"]
+    assert len(key) == 32
+
+
 def test_run_batch_polls_until_complete(mock_http: MagicMock) -> None:
     mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
     mock_http.get.side_effect = [

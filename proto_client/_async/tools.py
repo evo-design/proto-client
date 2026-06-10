@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, TypeVar
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -190,9 +191,12 @@ class AsyncToolsNamespace:
         Pass ``output_model=MyModel`` to validate the ``result`` dict into a
         typed Pydantic instance, swapped into ``response.result`` at runtime.
 
+        An ``Idempotency-Key`` is auto-generated when ``idempotency_key`` is not
+        supplied, so the submit is safe to retry without creating a duplicate job.
+
         Raises RuntimeError on failure/cancellation, TimeoutError on timeout.
         """
-        job_id = await self.submit(tool_key, inputs, config, idempotency_key=idempotency_key)
+        job_id = await self.submit(tool_key, inputs, config, idempotency_key=idempotency_key or uuid4().hex)
         return await self._wait(tool_key, job_id, poll_interval, timeout, output_model)
 
     async def run_batch(
@@ -213,8 +217,10 @@ class AsyncToolsNamespace:
         :class:`BatchItemFailure`.
 
         Pass ``output_model`` to validate each succeeded item's output.
+        An ``Idempotency-Key`` is auto-generated when ``idempotency_key`` is not
+        supplied, so the submit is safe to retry without duplicating the batch.
         """
-        job_id = await self.submit_batch(tool_key, inputs_list, config, idempotency_key=idempotency_key)
+        job_id = await self.submit_batch(tool_key, inputs_list, config, idempotency_key=idempotency_key or uuid4().hex)
         return await self._wait_batch(tool_key, job_id, poll_interval, timeout, output_model)
 
     async def _wait(
