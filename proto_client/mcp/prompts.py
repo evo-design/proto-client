@@ -378,7 +378,7 @@ def register_prompts(mcp: FastMCP) -> None:
     mcp.prompt(
         description=(
             "Workflow for finding the right bioinformatics tool for a user's task. "
-            "Guides through list_categories, search_tools, get_tool_schema, get_tool_example."
+            "Guides through search_tools, list_tools, get_tool_schema, get_tool_example."
         ),
     )(find_tool)
 
