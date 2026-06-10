@@ -89,8 +89,6 @@ class AsyncAssetsNamespace:
         client = self._clients_by_origin.get(origin)
         if client is None:
             raise ValueError(
-                f"AssetRef URL {url!r} doesn't match any configured base URL "
-                f"({sorted(self._clients_by_origin)}); check the client's "
-                "`tools_base_url` / `runs_base_url` settings."
+                f"AssetRef URL {url!r} doesn't match any configured base URL ({sorted(self._clients_by_origin)})."
             )
         return client

@@ -1,8 +1,9 @@
-"""Built-in default API endpoints.
+"""Built-in API endpoints.
 
-Override via the ``PROTO_TOOLS_BASE_URL`` / ``PROTO_RUNS_BASE_URL`` env vars or
-the ``tools_base_url`` / ``runs_base_url`` constructor args.
+Both URLs are fixed — Proto hosts both services exclusively.
 """
 
-DEFAULT_TOOLS_BASE_URL = "https://proto-tools.evodesign.org"
-DEFAULT_RUNS_BASE_URL = "https://proto-language.evodesign.org"
+
+TOOLS_BASE_URL = "https://proto-tools.evodesign.org"
+
+RUNS_BASE_URL = "https://proto-language.evodesign.org"

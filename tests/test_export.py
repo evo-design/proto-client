@@ -158,11 +158,7 @@ def test_export_program_writes_folder_layout(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"REMOTE-PDB")
 
-    client = ProtoClient(
-        api_key="x",
-        tools_base_url="http://localhost:9999",
-        runs_base_url="http://localhost:9998",
-    )
+    client = ProtoClient(api_key="x")
     mock_http = _mock_http(handler)
     try:
         client.assets = AssetsNamespace([mock_http])

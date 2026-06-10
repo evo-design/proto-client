@@ -11,7 +11,7 @@ from proto_client._http import RetryTransport
 
 def test_client_reads_env_var():
     with patch.dict(os.environ, {"PROTO_API_KEY": "env-key"}):
-        c = ProtoClient(tools_base_url="http://localhost:9999")
+        c = ProtoClient()
         assert c.tools._http.headers.get("x-api-key") == "env-key"
         c.close()
 
@@ -19,7 +19,7 @@ def test_client_reads_env_var():
 def test_client_no_key_no_header():
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("PROTO_API_KEY", None)
-        c = ProtoClient(tools_base_url="http://localhost:9999")
+        c = ProtoClient()
         assert "x-api-key" not in c.tools._http.headers
         c.close()
 
@@ -30,31 +30,23 @@ def test_client_empty_key_raises():
 
 
 def test_client_sets_app_user_id_header_on_both_namespaces():
-    with ProtoClient(
-        api_key="x",
-        tools_base_url="http://localhost:9999",
-        runs_base_url="http://localhost:9998",
-        app_user_id="user-abc",
-    ) as c:
+    with ProtoClient(api_key="x", app_user_id="user-abc") as c:
         assert c.tools._http.headers.get("x-app-user-id") == "user-abc"
         assert c.runs._http.headers.get("x-app-user-id") == "user-abc"
 
 
 def test_client_no_app_user_id_no_header():
-    with ProtoClient(api_key="x", tools_base_url="http://localhost:9999") as c:
+    with ProtoClient(api_key="x") as c:
         assert "x-app-user-id" not in c.tools._http.headers
 
 
 def test_client_empty_app_user_id_raises():
     with pytest.raises(ValueError, match="app_user_id must not be empty"):
-        ProtoClient(api_key="x", tools_base_url="http://localhost:9999", app_user_id="")
+        ProtoClient(api_key="x", app_user_id="")
 
 
 def test_client_closes_both_http_clients():
-    c = ProtoClient(
-        tools_base_url="http://localhost:9999",
-        runs_base_url="http://localhost:9998",
-    )
+    c = ProtoClient()
     tools_http = c.tools._http
     runs_http = c.runs._http
     c.close()
@@ -64,7 +56,7 @@ def test_client_closes_both_http_clients():
 
 @pytest.mark.parametrize("max_retries,expected", [(2, 2), (0, 0)])
 def test_retry_config_propagation(max_retries, expected):
-    kwargs = {"tools_base_url": "http://localhost:9999"}
+    kwargs = {}
     if max_retries != 2:
         kwargs["max_retries"] = max_retries
     with ProtoClient(**kwargs) as c:
@@ -75,7 +67,7 @@ def test_retry_config_propagation(max_retries, expected):
 
 def test_explicit_retry_config():
     cfg = RetryConfig(max_retries=5, initial_delay=1.0)
-    with ProtoClient(tools_base_url="http://localhost:9999", retry_config=cfg) as c:
+    with ProtoClient(retry_config=cfg) as c:
         transport = c.tools._http._transport
         assert isinstance(transport, RetryTransport)
         assert transport._config.max_retries == 5
@@ -83,38 +75,28 @@ def test_explicit_retry_config():
 
 
 def test_user_agent_header():
-    with ProtoClient(tools_base_url="http://localhost:9999") as c:
+    with ProtoClient() as c:
         ua = c.tools._http.headers.get("user-agent", "")
         assert "proto-client-python/" in ua
         assert "python/" in ua
 
 
-@pytest.mark.parametrize(
-    "env_var,namespace",
-    [
-        ("PROTO_TOOLS_BASE_URL", "tools"),
-        ("PROTO_RUNS_BASE_URL", "runs"),
-    ],
-)
-def test_base_url_from_env(monkeypatch, env_var, namespace):
-    url = f"http://custom-{namespace}:8000"
-    monkeypatch.setenv(env_var, url)
-    with ProtoClient() as c:
-        assert str(getattr(c, namespace)._http.base_url).rstrip("/") == url
+def test_base_urls_are_fixed():
+    """Both base URLs are hardcoded — env-var hijack attempts are ignored."""
+    from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 
-
-def test_explicit_base_url_overrides_env():
-    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://env:8000"}):
-        with ProtoClient(tools_base_url="http://explicit:9000") as c:
-            assert str(c.tools._http.base_url).rstrip("/") == "http://explicit:9000"
+    with patch.dict(
+        os.environ,
+        {"PROTO_TOOLS_BASE_URL": "http://hijack-tools:8000", "PROTO_RUNS_BASE_URL": "http://hijack-runs:8000"},
+    ):
+        with ProtoClient() as c:
+            assert str(c.tools._http.base_url).rstrip("/") == TOOLS_BASE_URL.rstrip("/")
+            assert str(c.runs._http.base_url).rstrip("/") == RUNS_BASE_URL.rstrip("/")
 
 
 def test_close_reraises_first_error():
     """When a client raises during close(), the first error is re-raised after all clients are closed."""
-    c = ProtoClient(
-        tools_base_url="http://localhost:9999",
-        runs_base_url="http://localhost:9998",
-    )
+    c = ProtoClient()
 
     original_close = c._clients[0].close
 
@@ -126,16 +108,12 @@ def test_close_reraises_first_error():
 
     with pytest.raises(RuntimeError, match="close boom"):
         c.close()
-    # Second client should still be closed even though the first one raised.
     assert c._clients == []
 
 
 def test_close_captures_first_error_only():
     """When multiple clients raise during close(), only the first error propagates."""
-    c = ProtoClient(
-        tools_base_url="http://localhost:9999",
-        runs_base_url="http://localhost:9998",
-    )
+    c = ProtoClient()
 
     original_close_0 = c._clients[0].close
     original_close_1 = c._clients[1].close
@@ -157,5 +135,4 @@ def test_close_captures_first_error_only():
     with pytest.raises(RuntimeError, match="first boom"):
         c.close()
 
-    # Both clients' close() must be called even when the first one raises.
     assert close_calls == [1, 1]
