@@ -132,6 +132,12 @@ def test_retry_after_http_date_in_past_clamps_to_zero() -> None:
     assert parse_retry_after(header) == 0.0
 
 
+def test_retry_after_negative_numeric_clamps_to_zero() -> None:
+    # A hostile/buggy `Retry-After: -1` must not reach time.sleep(-1) (ValueError).
+    assert parse_retry_after("-1") == 0.0
+    assert parse_retry_after("-5.5") == 0.0
+
+
 def test_retry_after_missing_or_garbage() -> None:
     assert parse_retry_after(None) is None
     assert parse_retry_after("") is None

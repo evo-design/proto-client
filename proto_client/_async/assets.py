@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
+from uuid import uuid4
 
 import httpx
 
@@ -43,13 +44,23 @@ class AsyncAssetsNamespace:
         return decode_asset_bytes(ref, await self.get(ref))
 
     async def download(self, ref: AssetLike, path: str | Path) -> Path:
-        """Stream exact stored asset bytes to ``path``."""
+        """Stream exact stored asset bytes to ``path`` atomically.
+
+        Writes to a sibling temp file and ``os.replace``s it into place on
+        success, so a mid-stream failure never leaves a truncated file at
+        ``path`` for a later run to mistake as complete.
+        """
         destination = Path(path)
-        file = await asyncio.to_thread(destination.open, "wb")
+        tmp = destination.with_name(f"{destination.name}.tmp.{uuid4().hex}")
         try:
-            await self._write_to(ref, file)
+            file = await asyncio.to_thread(tmp.open, "wb")
+            try:
+                await self._write_to(ref, file)
+            finally:
+                await asyncio.to_thread(file.close)
+            await asyncio.to_thread(tmp.replace, destination)
         finally:
-            await asyncio.to_thread(file.close)
+            await asyncio.to_thread(tmp.unlink, missing_ok=True)
         return destination
 
     async def _write_to(self, ref: AssetLike, file: BinaryIO) -> None:

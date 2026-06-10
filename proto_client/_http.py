@@ -6,9 +6,10 @@ failed requests are retried with exponential backoff + jitter. Retriable:
 client errors (400, 401, 403, 404, 409, 422) fall through unchanged — the
 caller will map them to typed errors via ``proto_client.errors.from_response``.
 
-On 429, if the server emits a ``Retry-After`` header we honor it verbatim
-instead of computed backoff. Conservative defaults (``max_retries=2``) keep
-the SDK from amplifying 429 storms against the the tools API rate limiter.
+On 429/503, if the server emits a ``Retry-After`` header we honor it (capped
+at ``retry_after_max``) instead of computed backoff. Conservative defaults
+(``max_retries=2``) keep the SDK from amplifying 429 storms against the
+the tools API rate limiter.
 """
 
 import asyncio
@@ -40,6 +41,11 @@ class RetryConfig:
 
     ``max_retries`` is the number of *additional* attempts after the first
     — ``max_retries=2`` yields up to 3 total requests.
+
+    ``retry_after_max`` caps how long an honored server ``Retry-After`` header
+    can park a retry, so a hostile or buggy value can't wedge the client for
+    hours. It bounds the *server hint* only; ``max_delay`` still bounds our own
+    computed backoff.
     """
 
     max_retries: int = 2
@@ -47,6 +53,7 @@ class RetryConfig:
     max_delay: float = 30.0
     factor: float = 2.0
     jitter: float = 0.1  # fractional, ±10% of the computed base delay
+    retry_after_max: float = 300.0  # cap on an honored server Retry-After (seconds)
 
     def __post_init__(self) -> None:
         if self.max_retries < 0:
@@ -59,6 +66,8 @@ class RetryConfig:
             raise ValueError("factor must be >= 1.0")
         if not 0.0 <= self.jitter <= 1.0:
             raise ValueError("jitter must be in [0, 1]")
+        if self.retry_after_max < 0:
+            raise ValueError("retry_after_max must be >= 0")
 
 
 def compute_backoff(
@@ -90,7 +99,7 @@ def _delay_for_response(
     if response.status_code in (429, 503):
         server_hint = parse_retry_after(response.headers.get("Retry-After"))
         if server_hint is not None:
-            return server_hint
+            return min(server_hint, config.retry_after_max)
     return compute_backoff(attempt, config, rng=rng)
 
 

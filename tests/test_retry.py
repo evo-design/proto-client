@@ -87,6 +87,7 @@ def _get(transport: RetryTransport) -> httpx.Response:
         ({"factor": 0.5}, "factor must be >= 1.0"),
         ({"jitter": -0.1}, "jitter must be in"),
         ({"jitter": 1.5}, "jitter must be in"),
+        ({"retry_after_max": -1.0}, "retry_after_max must be >= 0"),
     ],
 )
 def test_retry_config_rejects_invalid_values(kwargs: dict, match: str) -> None:
@@ -205,3 +206,13 @@ def test_retries_on_remote_protocol_error_then_succeeds() -> None:
     )
     assert _get(transport).status_code == 200
     assert counter.n == 2
+
+
+def test_retry_after_capped_at_retry_after_max() -> None:
+    # A hostile/buggy `Retry-After: 999999` must not park the client for days.
+    transport, _, delays = _sync_transport(
+        [_resp(429, headers={"Retry-After": "999999"}), _resp(200)],
+        retry_after_max=120.0,
+    )
+    assert _get(transport).status_code == 200
+    assert delays == [120.0]

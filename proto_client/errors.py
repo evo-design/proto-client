@@ -121,8 +121,9 @@ def parse_retry_after(value: str | None) -> float | None:
     """Parse a ``Retry-After`` header value.
 
     Accepts either a numeric delta-seconds or an HTTP-date. Returns ``None``
-    when the value is missing or unparseable. HTTP-dates in the past clamp
-    to ``0.0`` so callers don't end up sleeping negative durations.
+    when the value is missing or unparseable. Negative numeric values and
+    past HTTP-dates both clamp to ``0.0`` so callers don't end up sleeping a
+    negative duration.
     """
     if value is None:
         return None
@@ -130,7 +131,7 @@ def parse_retry_after(value: str | None) -> float | None:
     if not value:
         return None
     try:
-        return float(value)
+        return max(0.0, float(value))
     except ValueError:
         pass
     try:

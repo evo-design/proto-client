@@ -72,7 +72,7 @@ The server lifespan creates/closes an `AsyncProtoClient` that reads config from 
 
 ### Retry Logic
 
-`_http.py` implements transport-level retries. Retryable: `{429, 500, 502, 503, 504}` + network/timeout errors + `httpx.RemoteProtocolError` (server-side keep-alive disconnect on long polls). `LocalProtocolError` (client-side bug), `DecodingError`, and `InvalidURL` stay non-retriable. Client errors (400, 401, 403, 404, 409, 422) are never retried. Default: 2 retries, 0.5s initial delay, exponential backoff with jitter.
+`_http.py` implements transport-level retries. Retryable: `{429, 500, 502, 503, 504}` + network/timeout errors + `httpx.RemoteProtocolError` (server-side keep-alive disconnect on long polls). `LocalProtocolError` (client-side bug), `DecodingError`, and `InvalidURL` stay non-retriable. Client errors (400, 401, 403, 404, 409, 422) are never retried. Default: 2 retries, 0.5s initial delay, exponential backoff with jitter. An honored server `Retry-After` (429/503) is capped at `retry_after_max` (default 300s).
 
 ## Configuration
 

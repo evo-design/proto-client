@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
+from uuid import uuid4
 
 import httpx
 
@@ -47,10 +48,20 @@ class AssetsNamespace:
         return decode_asset_bytes(ref, self.get(ref))
 
     def download(self, ref: AssetLike, path: str | Path) -> Path:
-        """Stream exact stored asset bytes to ``path``."""
+        """Stream exact stored asset bytes to ``path`` atomically.
+
+        Writes to a sibling temp file and ``os.replace``s it into place on
+        success, so a mid-stream failure never leaves a truncated file at
+        ``path`` for a later run to mistake as complete.
+        """
         destination = Path(path)
-        with destination.open("wb") as file:
-            self._write_to(ref, file)
+        tmp = destination.with_name(f"{destination.name}.tmp.{uuid4().hex}")
+        try:
+            with tmp.open("wb") as file:
+                self._write_to(ref, file)
+            tmp.replace(destination)
+        finally:
+            tmp.unlink(missing_ok=True)
         return destination
 
     def _write_to(self, ref: AssetLike, file: BinaryIO) -> None:

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 from proto_client import AssetRef
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client.assets import AssetsNamespace
-from proto_client.errors import ProtoNotFoundError
+from proto_client.errors import ProtoNotFoundError, ProtoServerError
 
 
 def _sync(handler, base_url: str = "https://api.test") -> httpx.Client:
@@ -206,6 +206,40 @@ async def test_async_download_parity(tmp_path: Path) -> None:
     ) as http:
         out = await AsyncAssetsNamespace([http]).download(_ref(), tmp_path / "x")
     assert out.read_bytes() == b"async-bytes"
+
+
+def test_download_is_atomic_no_temp_left_on_success(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"bytes")
+
+    dest = tmp_path / "out.bin"
+    with _sync(handler) as http:
+        out = AssetsNamespace([http]).download(_ref(), dest)
+    assert out.read_bytes() == b"bytes"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.bin"]  # temp replaced in, no .tmp leftover
+
+
+def test_download_failure_leaves_no_file_at_destination(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    dest = tmp_path / "out.pdb"
+    with _sync(handler) as http:
+        with pytest.raises(ProtoServerError):
+            AssetsNamespace([http]).download(_ref(), dest)
+    assert not dest.exists()  # no truncated file a later run would treat as complete
+    assert list(tmp_path.iterdir()) == []  # temp cleaned up too
+
+
+async def test_async_download_failure_leaves_no_file_at_destination(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    dest = tmp_path / "out.pdb"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://api.test") as http:
+        with pytest.raises(ProtoServerError):
+            await AsyncAssetsNamespace([http]).download(_ref(), dest)
+    assert not dest.exists()  # temp-cleanup parity is covered by the sync test above
 
 
 # =============================================================================
