@@ -590,7 +590,7 @@ def register_tools(mcp: FastMCP) -> None:
             "Use get_run_status to poll and get_run_timepoints / get_run_metrics "
             "to retrieve results."
         ),
-        annotations={"destructiveHint": True},
+        annotations={"destructiveHint": False, "openWorldHint": True},
     )(create_run)
 
     mcp.tool(
@@ -607,7 +607,7 @@ def register_tools(mcp: FastMCP) -> None:
         description=(
             "Cancel a running optimization. ``details.already_cancelled`` is true if the run had already finished."
         ),
-        annotations={"destructiveHint": True},
+        annotations={"destructiveHint": True, "idempotentHint": True},
     )(cancel_run)
 
     mcp.tool(

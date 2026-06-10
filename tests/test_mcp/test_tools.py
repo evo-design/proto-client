@@ -91,31 +91,26 @@ def test_main_stdio_dispatches_to_mcp_run(monkeypatch):
         mock_mcp.run.assert_called_once_with()
 
 
-def test_main_http_serves_app_via_uvicorn(monkeypatch):
+def test_main_http_dispatches_to_mcp_run(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
         ["proto-client-mcp", "--transport", "http", "--host", "127.0.0.1", "--port", "8080"],
     )
-    fake_app = object()
-    with (
-        patch("proto_client.mcp.app.build_app", return_value=fake_app) as mock_build,
-        patch("uvicorn.run") as mock_run,
-    ):
+    with patch("proto_client.mcp.server.mcp") as mock_mcp:
         from proto_client.mcp.__main__ import main
 
         main()
-        mock_build.assert_called_once_with()
-        mock_run.assert_called_once_with(fake_app, host="127.0.0.1", port=8080)
+        mock_mcp.run.assert_called_once_with(transport="http", host="127.0.0.1", port=8080, stateless_http=True)
 
 
-# --- HTTP wrapper ---
+# --- HTTP transport (native FastMCP) ---
 
 
 async def test_health_returns_ok():
-    from proto_client.mcp.app import build_app
+    from proto_client.mcp.server import mcp
 
-    app = build_app()
+    app = mcp.http_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")

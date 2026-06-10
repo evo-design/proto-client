@@ -17,19 +17,14 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=None, help="HTTP port (default: $PORT or 9300)")
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        from proto_client.mcp.server import mcp
+    from proto_client.mcp.server import mcp
 
+    if args.transport == "stdio":
         mcp.run()
         return
 
     port = args.port if args.port is not None else int(os.environ.get("PORT") or 9300)
-
-    import uvicorn
-
-    from proto_client.mcp.app import build_app
-
-    uvicorn.run(build_app(), host=args.host, port=port)
+    mcp.run(transport="http", host=args.host, port=port, stateless_http=True)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from proto_client._async.client import AsyncProtoClient
 
@@ -49,6 +51,12 @@ mcp = FastMCP(
     ),
     lifespan=_lifespan,
 )
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(_request: Request) -> JSONResponse:
+    """Liveness probe for HTTP deployments."""
+    return JSONResponse({"status": "healthy"})
 
 
 def _register_all() -> None:

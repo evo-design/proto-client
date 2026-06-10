@@ -32,8 +32,7 @@ Issues = "https://github.com/evo-design/proto-client/issues"
 
 [project.optional-dependencies]
 mcp = [
-    "fastmcp>=2.0.0",
-    "fastapi>=0.104",
+    "fastmcp>=3.2,<4",
     "uvicorn[standard]>=0.27",
 ]
 dev = [
@@ -45,8 +44,7 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-timeout>=2.3",
     "pytest-rerunfailures>=14.0",
-    "fastmcp>=2.0.0",
-    "fastapi>=0.104",
+    "fastmcp>=3.2,<4",
     "uvicorn[standard]>=0.27",
 ]
 
