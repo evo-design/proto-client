@@ -44,6 +44,13 @@ async def test_async_iter_job_logs_path_and_params():
     assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
+def test_logrecord_update_status_defaults_false_and_parses_true():
+    """``update_status`` is omitted on the wire when false (defaults False) and parses True for phase markers."""
+    base = {"type": "record", "seq": 1, "ts": "2026-05-09T12:34:56.789Z", "stream": "stdout", "level": "info", "msg": "x"}
+    assert LogRecord.model_validate(base).update_status is False
+    assert LogRecord.model_validate({**base, "seq": 2, "stream": "system", "update_status": True}).update_status is True
+
+
 # ── iter_job_logs / get_job_logs — level + stream filters ─────────────
 
 
