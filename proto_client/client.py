@@ -8,14 +8,14 @@ from typing import Any
 
 import httpx
 
-from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
-from proto_client._http import RetryConfig, RetryTransport
-from proto_client._version import VERSION
 from proto_client.assets import AssetsNamespace
 from proto_client.errors import from_response
 from proto_client.models import AssetRef, MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
+from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client.utils.http import RetryConfig, RetryTransport
+from proto_client.utils.version import VERSION
 
 
 class ProtoClient:
@@ -128,7 +128,7 @@ class ProtoClient:
         except ImportError as e:
             raise RuntimeError("export_program requires proto-language to be installed alongside proto-client.") from e
 
-        from proto_client._export_names import build_export_name
+        from proto_client.utils.export_names import build_export_name
 
         out_dir = Path.cwd() / build_export_name(project=project) if path is None else Path(path)
         out_dir.mkdir(parents=True, exist_ok=True)

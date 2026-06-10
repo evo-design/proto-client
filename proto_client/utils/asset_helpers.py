@@ -29,6 +29,7 @@ def asset_url(ref_or_dict: AssetLike) -> str:
 
 
 def decode_asset_bytes(ref_or_dict: AssetLike, data: bytes) -> Any:
+    """Decode raw asset bytes by MIME type: (gzipped) JSON to an object, chemical/text to str, else bytes."""
     if isinstance(ref_or_dict, dict):
         ref_or_dict = AssetRef.model_validate(ref_or_dict)
     mime_type = ref_or_dict.mime_type or ""
@@ -83,6 +84,7 @@ def origin_of(url: str) -> str:
 
 
 def redirect_location(response: httpx.Response, url: str) -> str:
+    """Return the redirect ``Location`` header value, or raise if the redirect omitted it."""
     location = response.headers.get("location")
     if isinstance(location, str) and location:
         return location
@@ -90,5 +92,6 @@ def redirect_location(response: httpx.Response, url: str) -> str:
 
 
 def strip_sensitive_redirect_headers(request: httpx.Request) -> None:
+    """Drop auth/cookie headers from *request* before it follows a redirect off a Proto origin."""
     for name in SENSITIVE_REDIRECT_HEADERS:
         request.headers.pop(name, None)

@@ -111,7 +111,7 @@ def test_404_raises_typed_error() -> None:
 
 def test_origin_match_ignores_default_ports() -> None:
     """URL with explicit :443 must match a client whose base_url has no port."""
-    from proto_client._assets import origin_of
+    from proto_client.utils.asset_helpers import origin_of
 
     assert origin_of("https://api.test:443/api/v1/assets/x") == "https://api.test"
     assert origin_of("http://api.test:80/x") == "http://api.test"
@@ -267,7 +267,7 @@ def test_suggested_filename_prefers_filename_field_then_mime_ext() -> None:
 
 
 def test_ext_for_mime_covers_common_types() -> None:
-    from proto_client._assets import ext_for_mime
+    from proto_client.utils.asset_helpers import ext_for_mime
 
     assert ext_for_mime("chemical/x-pdb") == ".pdb"
     assert ext_for_mime("chemical/x-cif") == ".cif"

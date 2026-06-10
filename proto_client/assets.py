@@ -9,7 +9,8 @@ from uuid import uuid4
 
 import httpx
 
-from proto_client._assets import (
+from proto_client.errors import from_response
+from proto_client.utils.asset_helpers import (
     AssetLike,
     asset_url,
     decode_asset_bytes,
@@ -17,7 +18,6 @@ from proto_client._assets import (
     redirect_location,
     strip_sensitive_redirect_headers,
 )
-from proto_client.errors import from_response
 
 
 class AssetsNamespace:

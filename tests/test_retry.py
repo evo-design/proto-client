@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
-from proto_client._http import (
+from proto_client.utils.http import (
     RetryConfig,
     RetryTransport,
     compute_backoff,

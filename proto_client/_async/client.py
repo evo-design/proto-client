@@ -10,11 +10,11 @@ import httpx
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
-from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
-from proto_client._http import AsyncRetryTransport, RetryConfig
-from proto_client._version import VERSION
 from proto_client.errors import from_response
 from proto_client.models import MeResponse
+from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client.utils.http import AsyncRetryTransport, RetryConfig
+from proto_client.utils.version import VERSION
 
 
 class AsyncProtoClient:

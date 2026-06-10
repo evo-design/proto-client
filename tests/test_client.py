@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from proto_client import ProtoClient, RetryConfig
-from proto_client._http import RetryTransport
+from proto_client.utils.http import RetryTransport
 
 
 def test_client_reads_env_var():
@@ -83,7 +83,7 @@ def test_user_agent_header():
 
 def test_base_urls_are_fixed():
     """Both base URLs are hardcoded — env-var hijack attempts are ignored."""
-    from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
+    from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 
     with patch.dict(
         os.environ,

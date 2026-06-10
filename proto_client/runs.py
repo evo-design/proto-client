@@ -19,7 +19,6 @@ from urllib.parse import unquote
 import httpx
 from pydantic import BaseModel
 
-from proto_client._export_names import build_export_name, sanitize_field
 from proto_client._ndjson import _collect_logs_page, _iter_ndjson_records
 from proto_client.errors import RunCancelledError, RunFailedError, from_response
 from proto_client.models import (
@@ -40,6 +39,7 @@ from proto_client.models import (
     StreamChannel,
     ValidationResponse,
 )
+from proto_client.utils.export_names import build_export_name, sanitize_field
 
 logger = logging.getLogger("proto_client.runs")
 

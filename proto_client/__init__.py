@@ -4,8 +4,6 @@ import logging
 import os
 
 from proto_client._async.client import AsyncProtoClient
-from proto_client._http import RetryConfig
-from proto_client._version import VERSION as __version__
 from proto_client.client import ProtoClient
 from proto_client.errors import (
     ProtoAPIError,
@@ -59,6 +57,8 @@ from proto_client.models import (
     ToolSchema,
     ValidationResponse,
 )
+from proto_client.utils.http import RetryConfig
+from proto_client.utils.version import VERSION as __version__
 
 __all__ = [
     "__version__",

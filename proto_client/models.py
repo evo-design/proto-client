@@ -90,7 +90,7 @@ class AssetRef(BaseModel):
 
     def suggested_filename(self) -> str:
         """Filename for local materialization, with path components stripped to prevent traversal."""
-        from proto_client._assets import ext_for_mime
+        from proto_client.utils.asset_helpers import ext_for_mime
 
         if self.filename:
             safe = Path(self.filename).name

@@ -23,7 +23,7 @@ import httpx
 
 from proto_client.errors import parse_retry_after
 
-logger = logging.getLogger("proto_client._http")
+logger = logging.getLogger("proto_client.utils.http")
 
 RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 # RemoteProtocolError is retriable (proxy closes stale keep-alives on long polls);
@@ -119,12 +119,14 @@ class RetryTransport(httpx.BaseTransport):
         sleep: Callable[[float], None] | None = None,
         rng: random.Random | None = None,
     ) -> None:
+        """Wrap *wrapped* with retry behavior; ``sleep`` and ``rng`` are injectable for tests."""
         self._wrapped = wrapped
         self._config = config or RetryConfig()
         self._sleep = sleep or time.sleep
         self._rng = rng
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        """Send the request, retrying retriable statuses/exceptions with backoff + jitter."""
         config = self._config
         attempt = 0
         while True:
@@ -172,6 +174,7 @@ class RetryTransport(httpx.BaseTransport):
             attempt += 1
 
     def close(self) -> None:
+        """Close the wrapped transport."""
         self._wrapped.close()
 
 
@@ -186,12 +189,14 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
         sleep: Callable[[float], Awaitable[None]] | None = None,
         rng: random.Random | None = None,
     ) -> None:
+        """Wrap *wrapped* with retry behavior; ``sleep`` and ``rng`` are injectable for tests."""
         self._wrapped = wrapped
         self._config = config or RetryConfig()
         self._sleep = sleep or asyncio.sleep
         self._rng = rng
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        """Send the request, retrying retriable statuses/exceptions with backoff + jitter."""
         config = self._config
         attempt = 0
         while True:
@@ -239,4 +244,5 @@ class AsyncRetryTransport(httpx.AsyncBaseTransport):
             attempt += 1
 
     async def aclose(self) -> None:
+        """Close the wrapped transport."""
         await self._wrapped.aclose()
