@@ -18,8 +18,8 @@ from proto_client._async.client import AsyncProtoClient
 async def _lifespan(_app: FastMCP) -> AsyncIterator[dict[str, Any]]:
     """Create an :class:`AsyncProtoClient` on startup and close it on shutdown.
 
-    The client reads ``PROTO_API_KEY``, ``PROTO_TOOLS_BASE_URL``, and
-    ``PROTO_RUNS_BASE_URL`` from the environment — no arguments needed.
+    The client reads ``PROTO_API_KEY`` and ``PROTO_RUNS_BASE_URL`` from the
+    environment — no arguments needed.
     """
     client = AsyncProtoClient()
     try:

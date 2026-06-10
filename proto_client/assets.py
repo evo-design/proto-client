@@ -96,7 +96,7 @@ class AssetsNamespace:
             raise ValueError(
                 f"AssetRef URL {url!r} doesn't match any configured base URL "
                 f"({sorted(self._clients_by_origin)}); check the client's "
-                "`tools_base_url` / `runs_base_url` settings."
+                "`runs_base_url` setting."
             )
         return client
 

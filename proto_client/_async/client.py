@@ -10,7 +10,7 @@ import httpx
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
-from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
+from proto_client._defaults import DEFAULT_RUNS_BASE_URL, TOOLS_BASE_URL
 from proto_client._http import AsyncRetryTransport, RetryConfig
 from proto_client._version import VERSION
 from proto_client.errors import from_response
@@ -30,7 +30,6 @@ class AsyncProtoClient:
     def __init__(
         self,
         api_key: str | None = None,
-        tools_base_url: str | None = None,
         runs_base_url: str | None = None,
         timeout: float = 600.0,
         max_retries: int = 2,
@@ -43,11 +42,6 @@ class AsyncProtoClient:
         if app_user_id == "":
             raise ValueError("app_user_id must not be empty. Pass a non-empty value or omit the argument.")
 
-        resolved_tools_url = (
-            tools_base_url
-            if tools_base_url is not None
-            else (os.environ.get("PROTO_TOOLS_BASE_URL") or DEFAULT_TOOLS_BASE_URL)
-        )
         resolved_runs_url = (
             runs_base_url
             if runs_base_url is not None
@@ -65,7 +59,7 @@ class AsyncProtoClient:
         cfg = retry_config or RetryConfig(max_retries=max_retries)
 
         tools_http = httpx.AsyncClient(
-            base_url=resolved_tools_url,
+            base_url=TOOLS_BASE_URL,
             headers=headers,
             timeout=timeout,
             transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from proto_client._defaults import DEFAULT_RUNS_BASE_URL, DEFAULT_TOOLS_BASE_URL
+from proto_client._defaults import DEFAULT_RUNS_BASE_URL, TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
 from proto_client.assets import AssetsNamespace, set_default_assets_namespace
@@ -30,7 +30,6 @@ class ProtoClient:
     def __init__(
         self,
         api_key: str | None = None,
-        tools_base_url: str | None = None,
         runs_base_url: str | None = None,
         timeout: float = 600.0,
         max_retries: int = 2,
@@ -41,8 +40,6 @@ class ProtoClient:
 
         Args:
             api_key: API key for authentication. Falls back to ``PROTO_API_KEY`` env var.
-            tools_base_url: Base URL for the tools API. Falls back to
-                ``PROTO_TOOLS_BASE_URL`` env var, then the package default.
             runs_base_url: Base URL for the runs API. Falls back to
                 ``PROTO_RUNS_BASE_URL`` env var, then the package default.
             timeout: Default request timeout in seconds.
@@ -59,11 +56,6 @@ class ProtoClient:
         if app_user_id == "":
             raise ValueError("app_user_id must not be empty. Pass a non-empty value or omit the argument.")
 
-        resolved_tools_url = (
-            tools_base_url
-            if tools_base_url is not None
-            else (os.environ.get("PROTO_TOOLS_BASE_URL") or DEFAULT_TOOLS_BASE_URL)
-        )
         resolved_runs_url = (
             runs_base_url
             if runs_base_url is not None
@@ -81,7 +73,7 @@ class ProtoClient:
         cfg = retry_config or RetryConfig(max_retries=max_retries)
 
         tools_http = httpx.Client(
-            base_url=resolved_tools_url,
+            base_url=TOOLS_BASE_URL,
             headers=headers,
             timeout=timeout,
             transport=RetryTransport(httpx.HTTPTransport(), config=cfg),

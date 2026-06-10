@@ -32,7 +32,7 @@ def test_me_returns_principal_payload():
         assert request.method == "GET"
         return httpx.Response(200, json=_principal(capabilities=["custom_components:execute"]))
 
-    c = ProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = ProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_runs_transport(c, handler)
     me = c.me()
     assert me.key_id == "pk_demo"
@@ -46,7 +46,7 @@ def test_me_raises_proto_auth_error_on_401():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"detail": "Invalid or missing API key"})
 
-    c = ProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = ProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_runs_transport(c, handler)
     with pytest.raises(ProtoAuthError):
         c.me()
@@ -57,7 +57,7 @@ def test_me_raises_proto_server_error_on_500():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"detail": "boom"})
 
-    c = ProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = ProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_runs_transport(c, handler)
     with pytest.raises(ProtoServerError):
         c.me()
@@ -68,7 +68,7 @@ def test_me_master_principal_advertises_flag():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_principal(label="dev-master", is_master=True))
 
-    c = ProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = ProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_runs_transport(c, handler)
     me = c.me()
     assert me.is_master is True
@@ -81,7 +81,7 @@ async def test_async_me_returns_principal_payload():
         assert request.url.path == "/api/v1/me"
         return httpx.Response(200, json=_principal(capabilities=["custom_components:execute"]))
 
-    c = AsyncProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = AsyncProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_async_runs_transport(c, handler)
     me = await c.me()
     assert me.capabilities == ["custom_components:execute"]
@@ -92,7 +92,7 @@ async def test_async_me_raises_proto_auth_error_on_403():
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, json={"detail": "nope"})
 
-    c = AsyncProtoClient(api_key="x", tools_base_url="http://stub", runs_base_url="http://stub")
+    c = AsyncProtoClient(api_key="x", runs_base_url="http://stub")
     _swap_async_runs_transport(c, handler)
     with pytest.raises(ProtoAuthError):
         await c.me()
