@@ -590,7 +590,11 @@ StreamChannel = Literal["stdout", "stderr", "system"]
 
 
 class LogRecord(BaseModel):
-    """A single NDJSON log line. ``stream`` is the channel; ``level`` is the RFC 5424 severity (orthogonal)."""
+    """A single NDJSON log line. ``stream`` is the channel; ``level`` is the RFC 5424 severity (orthogonal).
+
+    ``update_status`` marks a live phase/status line (drives the spinner subtitle rather than a plain log
+    line); omitted on the wire when false.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -600,6 +604,7 @@ class LogRecord(BaseModel):
     stream: StreamChannel
     level: Level
     msg: str
+    update_status: bool = False
 
 
 class LogsEnd(BaseModel):
