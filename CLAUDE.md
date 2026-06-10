@@ -60,7 +60,7 @@ Each namespace wraps an httpx client. The client manages two separate httpx clie
 
 ### MCP Server
 
-`proto_client/mcp/` is a FastMCP server exposing Proto Bio capabilities to AI agents. It wraps `AsyncProtoClient` and registers 10 tools (list_tools, search_tools, get_tool_schema, run_tool, list_components, validate_program, create_run, get_run_status, cancel_run, get_run_results).
+`proto_client/mcp/` is a FastMCP server exposing Proto Bio capabilities to AI agents. It wraps `AsyncProtoClient` and registers tools (bioinformatics tool discovery + execution, and optimization-run management), plus MCP prompts and resources. The `instructions` block in `server.py` is the authoritative, always-current surface — don't re-enumerate the tool list here.
 
 ```bash
 pip install proto-client[mcp]

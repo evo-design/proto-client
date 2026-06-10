@@ -13,10 +13,11 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from time import sleep as _sleep
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import unquote
 
 import httpx
+from pydantic import BaseModel
 
 from proto_client._export_names import build_export_name, sanitize_field
 from proto_client._ndjson import _collect_logs_page, _iter_ndjson_records
@@ -41,6 +42,8 @@ from proto_client.models import (
 )
 
 logger = logging.getLogger("proto_client.runs")
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def _save_zip(destination: Path, content: bytes) -> None:
@@ -103,6 +106,20 @@ class RunsNamespace:
         """Initialize with an httpx Client."""
         self._http = http
 
+    def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Issue a request, log it, and raise a typed error on any non-2xx response."""
+        logger.debug("%s %s", method, path)
+        resp = self._http.request(method, path, **kwargs)
+        logger.debug("%s %s -> %d", method, path, resp.status_code)
+        if resp.is_error:
+            raise from_response(resp)
+        return resp
+
+    def _request(self, method: str, path: str, *, model: type[T], **kwargs: Any) -> T:
+        """Send a request and validate the JSON body into *model*."""
+        resp = self._send(method, path, **kwargs)
+        return model.model_validate(resp.json())
+
     # ------------------------------------------------------------------ runs
 
     def create(
@@ -123,22 +140,17 @@ class RunsNamespace:
             body["webhook_url"] = webhook_url
         if webhook_metadata is not None:
             body["webhook_metadata"] = webhook_metadata
-        logger.debug("POST /api/v1/runs")
-        resp = self._http.post("/api/v1/runs", params={"execute": str(execute).lower()}, json=body)
-        logger.debug("POST /api/v1/runs -> %d", resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return CreateRunResponse.model_validate(resp.json())
+        return self._request(
+            "POST",
+            "/api/v1/runs",
+            model=CreateRunResponse,
+            params={"execute": str(execute).lower()},
+            json=body,
+        )
 
     def get(self, run_id: str) -> RunResponse:
         """GET /api/v1/runs/{run_id} — fetch run status and stage results."""
-        path = f"/api/v1/runs/{run_id}"
-        logger.debug("GET %s", path)
-        resp = self._http.get(path)
-        logger.debug("GET %s -> %d", path, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return RunResponse.model_validate(resp.json())
+        return self._request("GET", f"/api/v1/runs/{run_id}", model=RunResponse)
 
     def export(
         self,
@@ -155,11 +167,7 @@ class RunsNamespace:
         """
         url = f"/api/v1/runs/{run_id}/export"
         params = {"stage_idx": stage_idx} if stage_idx is not None else None
-        logger.debug("GET %s params=%s", url, params)
-        resp = self._http.get(url, params=params)
-        logger.debug("GET %s -> %d", url, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
+        resp = self._send("GET", url, params=params)
         server_filename = _filename_from_disposition(resp.headers.get("content-disposition"))
         destination = _resolve_export_destination(path, server_filename, project=project, stage_idx=stage_idx)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -173,13 +181,7 @@ class RunsNamespace:
         Inspect ``details.already_cancelled`` / ``details.task_terminated``
         to tell a fresh cancel from a no-op.
         """
-        path = f"/api/v1/runs/{run_id}/cancel"
-        logger.debug("POST %s", path)
-        resp = self._http.post(path)
-        logger.debug("POST %s -> %d", path, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return CancelRunResponse.model_validate(resp.json())
+        return self._request("POST", f"/api/v1/runs/{run_id}/cancel", model=CancelRunResponse)
 
     def run_stage(self, run_id: str, stage_index: int) -> RunResponse:
         """POST /api/v1/runs/{run_id}/stages/{stage_index}/start — run a single stage.
@@ -188,13 +190,7 @@ class RunsNamespace:
         and for re-running a failed stage — the latter is a common beta-user
         recovery path.
         """
-        path = f"/api/v1/runs/{run_id}/stages/{stage_index}/start"
-        logger.debug("POST %s", path)
-        resp = self._http.post(path)
-        logger.debug("POST %s -> %d", path, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return RunResponse.model_validate(resp.json())
+        return self._request("POST", f"/api/v1/runs/{run_id}/stages/{stage_index}/start", model=RunResponse)
 
     # ------------------------------------------------------------ validation
 
@@ -207,12 +203,9 @@ class RunsNamespace:
         Raises ``ProtoValidationError`` (422) when the program is invalid;
         the response body carries a structured ``{"errors": [...]}`` detail.
         """
-        logger.debug("POST /api/v1/programs/validate")
-        resp = self._http.post("/api/v1/programs/validate", json={"program_data": program_data})
-        logger.debug("POST /api/v1/programs/validate -> %d", resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return ValidationResponse.model_validate(resp.json())
+        return self._request(
+            "POST", "/api/v1/programs/validate", model=ValidationResponse, json={"program_data": program_data}
+        )
 
     # ------------------------------------------------------------- timepoints
 
@@ -230,11 +223,7 @@ class RunsNamespace:
         if resolution is not None:
             params["resolution"] = resolution
         url = f"/api/v1/runs/{run_id}/metrics"
-        logger.debug("GET %s", url)
-        resp = self._http.get(url, params=params)
-        logger.debug("GET %s -> %d", url, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
+        resp = self._send("GET", url, params=params)
         return [StageMetrics.model_validate(item) for item in resp.json()]
 
     def get_timepoints(
@@ -250,12 +239,7 @@ class RunsNamespace:
         if stage is not None:
             params["optimizer_stage_idx"] = stage
         url = f"/api/v1/runs/{run_id}/timepoints"
-        logger.debug("GET %s", url)
-        resp = self._http.get(url, params=params)
-        logger.debug("GET %s -> %d", url, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return PaginatedTimepoints.model_validate(resp.json())
+        return self._request("GET", url, model=PaginatedTimepoints, params=params)
 
     def get_timepoint(
         self,
@@ -265,12 +249,7 @@ class RunsNamespace:
     ) -> RunTimepointResponse:
         """GET /api/v1/runs/{run_id}/timepoints/{stage}/{timepoint} — single row."""
         url = f"/api/v1/runs/{run_id}/timepoints/{stage}/{timepoint}"
-        logger.debug("GET %s", url)
-        resp = self._http.get(url)
-        logger.debug("GET %s -> %d", url, resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
-        return RunTimepointResponse.model_validate(resp.json())
+        return self._request("GET", url, model=RunTimepointResponse)
 
     def iter_timepoints(
         self,
@@ -357,29 +336,17 @@ class RunsNamespace:
 
     def list_constraints(self) -> list[ConstraintSpec]:
         """GET /api/v1/constraints — list registered constraints with their params."""
-        logger.debug("GET /api/v1/constraints")
-        resp = self._http.get("/api/v1/constraints")
-        logger.debug("GET /api/v1/constraints -> %d", resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
+        resp = self._send("GET", "/api/v1/constraints")
         return [ConstraintSpec.model_validate(item) for item in resp.json()]
 
     def list_generators(self) -> list[GeneratorSpec]:
         """GET /api/v1/generators — list registered generators with their params."""
-        logger.debug("GET /api/v1/generators")
-        resp = self._http.get("/api/v1/generators")
-        logger.debug("GET /api/v1/generators -> %d", resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
+        resp = self._send("GET", "/api/v1/generators")
         return [GeneratorSpec.model_validate(item) for item in resp.json()]
 
     def list_optimizers(self) -> list[OptimizerSpec]:
         """GET /api/v1/optimizers — list registered optimizers with their params."""
-        logger.debug("GET /api/v1/optimizers")
-        resp = self._http.get("/api/v1/optimizers")
-        logger.debug("GET /api/v1/optimizers -> %d", resp.status_code)
-        if resp.is_error:
-            raise from_response(resp)
+        resp = self._send("GET", "/api/v1/optimizers")
         return [OptimizerSpec.model_validate(item) for item in resp.json()]
 
     @staticmethod

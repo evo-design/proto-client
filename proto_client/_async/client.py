@@ -24,7 +24,7 @@ class AsyncProtoClient:
 
         async with AsyncProtoClient(api_key="...") as client:
             run = await client.runs.create(program_data={...})
-            status = await client.runs.get(run["run_id"])
+            status = await client.runs.get(run.run_id)
     """
 
     def __init__(

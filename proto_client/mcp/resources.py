@@ -30,8 +30,8 @@ def _format_metadata(spec: Any) -> str:
     """Render every spec field except those displayed elsewhere; skip empty/None/False."""
     displayed_elsewhere = {"key", "label", "description", "config_model"}
     parts: list[str] = []
-    for name, field_info in type(spec).model_fields.items():
-        if name in displayed_elsewhere or field_info.exclude:
+    for name in type(spec).model_fields:
+        if name in displayed_elsewhere:
             continue
         value = getattr(spec, name)
         if value is None or value is False or value == [] or value == "":

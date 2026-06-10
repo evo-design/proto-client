@@ -38,7 +38,7 @@ from proto_client import AsyncProtoClient
 
 async with AsyncProtoClient(api_key="...") as client:
     run = await client.runs.create(program_data={...})
-    status = await client.runs.get(run["run_id"])
+    status = await client.runs.get(run.run_id)
 ```
 
 Set `PROTO_API_KEY` to skip passing `api_key=` each time.
@@ -83,9 +83,9 @@ logits_ref = job.result["scores"][0]["logits"]
 client.assets.download(logits_ref, "logits.json.gz")
 
 run = client.runs.get("run_123")
-pdb_output = run.stage_results[0].results[0].constructs[0].segments[0].constraints["fold"].data[
-    "pdb_output"
-]
+# Per-constraint data lives on full timepoint rows, not the slim run summary.
+tp = client.runs.get_timepoint(run.id, stage=0, timepoint=0)
+pdb_output = tp.results[0].constructs[0].segments[0].constraints["fold"].data["pdb_output"]
 pdb_text = client.assets.decode(pdb_output)
 ```
 
@@ -142,7 +142,7 @@ Add to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
 }
 ```
 
-The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `run_tool`) and optimization run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `cancel_run`, `get_run_results`).
+The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`) and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
 
 A `proto-client-mcp` CLI script is also installed:
 
