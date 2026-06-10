@@ -1,5 +1,6 @@
 """Tests for MCP tool implementations and registration."""
 
+import gzip
 import sys
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +24,8 @@ from proto_client.mcp.tools import (
     ComponentsResult,
     _get_client,
     _handle_proto_errors,
+    _inline_assets,
+    fetch_asset_impl,
     get_tool_example_impl,
     list_components_impl,
     list_tools_impl,
@@ -277,6 +280,116 @@ async def test_get_tool_example_returns_example_input(mock_client):
     mock_client.tools.get_example.assert_awaited_once_with("esmfold-prediction")
 
 
+# --- Asset inlining + fetch_asset ---
+
+
+_ASSET_SMALL_JSON = {
+    "id": "a1",
+    "kind": "output",
+    "mime_type": "application/json",
+    "size_bytes": 16,
+    "url": "https://api.test/api/v1/assets/a1",
+}
+_ASSET_BIG = {
+    "id": "a2",
+    "kind": "output",
+    "mime_type": "application/json+gzip",
+    "size_bytes": 5_000_000,
+    "url": "https://api.test/api/v1/assets/a2",
+}
+
+
+async def test_inline_assets_inlines_small_ref(mock_client):
+    mock_client.assets.decode.return_value = {"plddt": 87}
+    out = await _inline_assets({"scores": [_ASSET_SMALL_JSON]}, mock_client.assets)
+    assert out == {"scores": [{"plddt": 87}]}
+    mock_client.assets.decode.assert_awaited_once()
+
+
+async def test_inline_assets_leaves_large_ref_untouched(mock_client):
+    out = await _inline_assets({"logits": _ASSET_BIG}, mock_client.assets)
+    assert out == {"logits": _ASSET_BIG}
+    mock_client.assets.decode.assert_not_awaited()
+
+
+async def test_fetch_asset_decodes_small_content(mock_client):
+    mock_client.assets.decode.return_value = "ATOM  1  N"
+    assert await fetch_asset_impl(mock_client, _ASSET_SMALL_JSON) == "ATOM  1  N"
+
+
+async def test_fetch_asset_refuses_oversize(mock_client):
+    res = await fetch_asset_impl(mock_client, _ASSET_BIG, max_bytes=1000)
+    assert res["fetched"] is False
+    mock_client.assets.decode.assert_not_awaited()
+
+
+async def test_fetch_asset_binary_returns_descriptor(mock_client):
+    mock_client.assets.decode.return_value = b"\x00\x01"
+    res = await fetch_asset_impl(
+        mock_client,
+        {
+            "id": "b",
+            "kind": "output",
+            "mime_type": "application/octet-stream",
+            "size_bytes": 8,
+            "url": "https://api.test/x",
+        },
+    )
+    assert res["fetched"] is False
+
+
+async def test_fetch_asset_rejects_non_ref(mock_client):
+    res = await fetch_asset_impl(mock_client, {"not": "a ref"})
+    assert res["fetched"] is False
+    mock_client.assets.decode.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [RuntimeError("storage 403 (not a Proto API error)"), gzip.BadGzipFile("corrupt"), ValueError("bad json")],
+)
+async def test_inline_assets_leaves_ref_when_decode_fails(mock_client, exc):
+    # Inlining is best-effort: a storage-redirect RuntimeError, a corrupt-gzip OSError, or any
+    # other decode failure must leave the ref in place, not fail the whole tool result.
+    mock_client.assets.decode.side_effect = exc
+    out = await _inline_assets({"pdb": _ASSET_SMALL_JSON}, mock_client.assets)
+    assert out == {"pdb": _ASSET_SMALL_JSON}
+    mock_client.assets.decode.assert_awaited_once()
+
+
+async def test_inline_assets_leaves_ref_when_decoded_exceeds_cap(mock_client):
+    # A small *stored* gzip ref passes the size_bytes pre-check but decodes past the cap.
+    small_stored_gzip = {**_ASSET_BIG, "size_bytes": 1024}
+    mock_client.assets.decode.return_value = {"big": "x" * (300 * 1024)}
+    out = await _inline_assets({"logits": small_stored_gzip}, mock_client.assets)
+    assert out == {"logits": small_stored_gzip}
+    mock_client.assets.decode.assert_awaited_once()
+
+
+async def test_fetch_asset_enforces_max_bytes_when_size_unknown(mock_client):
+    # No size_bytes metadata, so the pre-check can't bound it; the decoded payload must.
+    ref = {"id": "c", "kind": "output", "mime_type": "application/json", "url": "https://api.test/c"}
+    mock_client.assets.decode.return_value = {"data": "y" * 5000}
+    res = await fetch_asset_impl(mock_client, ref, max_bytes=1000)
+    assert res["fetched"] is False
+    assert "max_bytes" in res["reason"]
+    mock_client.assets.decode.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [RuntimeError("storage 403 (not a Proto API error)"), gzip.BadGzipFile("corrupt"), ValueError("bad origin")],
+)
+async def test_fetch_asset_returns_descriptor_on_decode_failure(mock_client, exc):
+    # Mirror the inline path: a storage-redirect/gzip/json/origin failure yields a
+    # descriptor, not a raw error escaping run_tool.
+    mock_client.assets.decode.side_effect = exc
+    res = await fetch_asset_impl(mock_client, _ASSET_SMALL_JSON)
+    assert res["fetched"] is False
+    assert res["id"] == "a1"
+    mock_client.assets.decode.assert_awaited_once()
+
+
 # --- Registration ---
 
 
@@ -291,6 +404,7 @@ async def test_register_tools_attaches_full_surface():
         "get_tool_schema",
         "get_tool_example",
         "run_tool",
+        "fetch_asset",
         "list_components",
         "validate_program",
         "create_run",

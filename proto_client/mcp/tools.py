@@ -12,6 +12,8 @@ with a mock without going through FastMCP.
 """
 
 import asyncio
+import json
+import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from functools import wraps
@@ -23,6 +25,7 @@ from fastmcp.exceptions import FastMCPError, ToolError
 from fastmcp.server.dependencies import get_http_request
 from pydantic import BaseModel, Field
 
+from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.client import AsyncProtoClient
 from proto_client.errors import (
     ProtoAPIError,
@@ -50,6 +53,8 @@ from proto_client.models import (
     ToolSchema,
     ValidationResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 # --- Client lifecycle ---
 
@@ -242,6 +247,129 @@ async def run_tool_impl(
     return await client.tools.run(tool_key, inputs, config, timeout=timeout)
 
 
+# --- Asset inlining for agent-facing results ---
+
+_INLINE_MIME_EXACT = frozenset({"application/json", "application/json+gzip"})
+_INLINE_MIME_PREFIXES = ("chemical/", "text/")
+_MAX_INLINE_BYTES = 256 * 1024  # inline decodable assets at or below this; larger stay refs for fetch_asset
+
+
+def _is_asset_ref(value: Any) -> bool:
+    """True if *value* is an API-readable AssetRef-shaped dict (id + output-ish kind + url)."""
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("id"), str)
+        and value.get("kind") in ("output", "reference_db", "user_upload")
+        and isinstance(value.get("url"), str)
+    )
+
+
+def _is_decodable(mime: str) -> bool:
+    """True if an asset of this MIME type decodes to text/JSON rather than raw binary."""
+    return mime in _INLINE_MIME_EXACT or mime.endswith("+json") or mime.startswith(_INLINE_MIME_PREFIXES)
+
+
+def _decoded_byte_len(decoded: Any) -> int:
+    """Bytes a decoded asset adds to the agent context once inlined.
+
+    ``str``/``bytes`` measure directly; a JSON value is measured by its serialized
+    form (what actually reaches the agent). Lets callers cap on the *decoded* size,
+    so a small ``application/json+gzip`` ref that expands to megabytes is not inlined.
+    """
+    if isinstance(decoded, str):
+        return len(decoded.encode("utf-8"))
+    if isinstance(decoded, bytes):
+        return len(decoded)
+    return len(json.dumps(decoded, default=str).encode("utf-8"))
+
+
+async def _inline_assets(value: Any, assets: AsyncAssetsNamespace) -> Any:
+    """Recursively replace small, decodable AssetRefs in a result with their decoded content.
+
+    Large or binary refs are left untouched so the agent can retrieve them with fetch_asset.
+    Inlining is a best-effort enhancement over an already-valid result, so ANY per-asset
+    fetch/decode failure leaves that ref in place rather than failing the whole result.
+    """
+    if _is_asset_ref(value):
+        size = value.get("size_bytes")
+        mime = value.get("mime_type") or ""
+        if _is_decodable(mime) and isinstance(size, int) and 0 <= size <= _MAX_INLINE_BYTES:
+            try:
+                decoded = await assets.decode(value)
+            except Exception as exc:  # broad on purpose: one bad asset must not fail the whole tool result
+                logger.warning("Could not inline asset %s; leaving ref in place: %s", value.get("id"), exc)
+                return value
+            # `size` is the *stored* size; a +gzip payload can decode far larger, so re-check
+            # the decoded size to keep an expanded asset from blowing out the agent context.
+            if _decoded_byte_len(decoded) <= _MAX_INLINE_BYTES:
+                return decoded
+        return value
+    if isinstance(value, dict):
+        return {k: await _inline_assets(v, assets) for k, v in value.items()}
+    if isinstance(value, list):
+        return [await _inline_assets(item, assets) for item in value]
+    return value
+
+
+async def fetch_asset_impl(client: AsyncProtoClient, ref: dict[str, Any], max_bytes: int = 1_000_000) -> Any:
+    """Fetch and decode an output asset referenced in a tool/run result.
+
+    Returns the decoded value (a JSON object, or text for chemical/text assets), or a
+    ``{"fetched": False, ...}`` descriptor when *ref* is not a fetchable asset, exceeds
+    *max_bytes*, decodes to raw bytes (binary), or can't be fetched/decoded.
+
+    ``max_bytes`` bounds the *returned/decoded* size, not the download: ``decode``
+    loads the full asset into memory before this guard applies, so it caps what the
+    agent receives, not what the server materializes.
+
+    *ref* (including its ``url``) is agent-supplied; ``assets`` constrains the fetch to
+    a configured Proto origin (``_client_for``), so this is an authenticated GET against
+    the Proto API — never an arbitrary external host.
+    """
+    if not _is_asset_ref(ref):
+        return {"fetched": False, "reason": "not a fetchable AssetRef (need id, kind, and url)"}
+    size = ref.get("size_bytes")
+    if isinstance(size, int) and size > max_bytes:
+        return {
+            "fetched": False,
+            "reason": f"asset is {size} bytes (> max_bytes={max_bytes}); raise max_bytes or download to a file",
+            "id": ref.get("id"),
+            "mime_type": ref.get("mime_type"),
+            "size_bytes": size,
+        }
+    try:
+        content = await client.assets.decode(ref)
+    except Exception as exc:  # broad on purpose: mirror _inline_assets — return a descriptor, not a raw error
+        logger.warning("fetch_asset could not fetch/decode %s: %s", ref.get("id"), exc)
+        return {
+            "fetched": False,
+            "reason": f"could not fetch or decode asset: {exc}",
+            "id": ref.get("id"),
+            "mime_type": ref.get("mime_type"),
+            "size_bytes": size,
+        }
+    if isinstance(content, bytes):
+        return {
+            "fetched": False,
+            "reason": "binary asset; not decodable to text/JSON",
+            "id": ref.get("id"),
+            "mime_type": ref.get("mime_type"),
+            "size_bytes": size,
+        }
+    # Enforce max_bytes on the actual decoded payload — covers refs with no `size_bytes`
+    # metadata and +gzip refs whose stored size understates the decoded size.
+    decoded_len = _decoded_byte_len(content)
+    if decoded_len > max_bytes:
+        return {
+            "fetched": False,
+            "reason": f"decoded asset is {decoded_len} bytes (> max_bytes={max_bytes}); raise max_bytes or download to a file",
+            "id": ref.get("id"),
+            "mime_type": ref.get("mime_type"),
+            "size_bytes": size,
+        }
+    return content
+
+
 async def list_components_impl(client: AsyncProtoClient) -> ComponentsResult:
     """List all proto-language constraints, generators, and optimizers."""
     constraints, generators, optimizers = await asyncio.gather(
@@ -351,9 +479,19 @@ async def run_tool(
     config: dict[str, Any] | None = None,
     timeout: float = 600.0,
 ) -> JobStatusResponse:
-    """Execute a bioinformatics tool and poll to completion."""
+    """Execute a bioinformatics tool and poll to completion (small result assets inlined)."""
     async with _get_client(ctx) as client:
-        return await run_tool_impl(client, tool_key, inputs, config, timeout)
+        job = await run_tool_impl(client, tool_key, inputs, config, timeout)
+        if isinstance(job.result, dict):
+            job = job.model_copy(update={"result": await _inline_assets(job.result, client.assets)})
+        return job
+
+
+@_handle_proto_errors
+async def fetch_asset(ref: dict[str, Any], ctx: Context, max_bytes: int = 1_000_000) -> Any:
+    """Download and decode an asset referenced by an AssetRef in a tool/run result."""
+    async with _get_client(ctx) as client:
+        return await fetch_asset_impl(client, ref, max_bytes)
 
 
 @_handle_proto_errors
@@ -483,6 +621,16 @@ def register_tools(mcp: FastMCP) -> None:
             "openWorldHint": True,
         },
     )(run_tool)
+
+    mcp.tool(
+        description=(
+            "Download and decode an asset (PDB/CIF structure, scores JSON, FASTA, …) referenced "
+            "by an AssetRef object in a tool or run result. Pass the ref. Decodes text/JSON/structure "
+            "inline; returns a descriptor for binary or oversize assets (raise max_bytes to force-fetch). "
+            "run_tool already inlines small assets, so this is mainly for large or run-result assets."
+        ),
+        annotations={"readOnlyHint": True},
+    )(fetch_asset)
 
     mcp.tool(
         description=(

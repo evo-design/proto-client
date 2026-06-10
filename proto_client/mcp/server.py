@@ -37,6 +37,7 @@ mcp = FastMCP(
         "Discover tools with list_tools (optionally filtered by category / uses_gpu) "
         "or search_tools; inspect with get_tool_schema or get_tool_example; execute "
         "with run_tool (citations via the proto-tools://citations/{key} resource). "
+        "Read any asset referenced in a result with fetch_asset (run_tool inlines small assets). "
         "Discover proto-language components with list_components; design with "
         "create_run / run_stage / get_run_status / cancel_run; fetch results with "
         "get_run_metrics (decimated chart series), get_run_timepoints (paginated "
