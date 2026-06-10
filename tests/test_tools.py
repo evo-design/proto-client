@@ -31,6 +31,9 @@ def test_list_returns_tool_info(mock_http):
                 "category": "structure_prediction",
                 "description": "Predict protein structure",
                 "uses_gpu": True,
+                "hosted": True,
+                "source_url": "https://github.com/facebookresearch/esm",
+                "iterable_input_fields": ["sequences"],
             }
         ]
     )
@@ -43,6 +46,50 @@ def test_list_returns_tool_info(mock_http):
     assert tools[0].key == "esmfold-prediction"
     assert tools[0].service == "ESMFoldService"
     assert tools[0].method == "predict"
+    assert tools[0].iterable_input_fields == ["sequences"]
+
+
+def test_list_accepts_inline_and_unhosted_tools_with_null_service(mock_http):
+    """Inline + unhosted tools serve ``service``/``method`` as ``null`` — list() must not raise.
+
+    Regression: ``ToolInfo`` previously typed ``service``/``method`` as required ``str``, so a
+    single inline tool (the live catalog serves dozens) crashed the entire ``tools.list()``.
+    """
+    mock_http.get.return_value = mock_response(
+        [
+            {
+                "key": "pdb-fetch-entry",  # inline tool: runs in the gateway, no remote service
+                "service": None,
+                "method": None,
+                "label": "PDB Fetch Entry",
+                "category": "data_retrieval",
+                "description": "Fetch a structure from RCSB PDB",
+                "uses_gpu": False,
+                "hosted": True,
+                "source_url": "https://www.rcsb.org",
+            },
+            {
+                "key": "alphafold3-prediction",  # unhosted: no service/method, carries a reason
+                "service": None,
+                "method": None,
+                "label": "AlphaFold3",
+                "category": "structure_prediction",
+                "description": "Not hosted; bring your own weights",
+                "uses_gpu": True,
+                "hosted": False,
+                "unhosted_reason": "License prohibits hosted inference",
+                "source_url": "https://github.com/google-deepmind/alphafold3",
+            },
+        ]
+    )
+    ns = ToolsNamespace(mock_http)
+    tools = ns.list()
+
+    assert [t.key for t in tools] == ["pdb-fetch-entry", "alphafold3-prediction"]
+    assert tools[0].service is None and tools[0].method is None
+    assert tools[0].hosted is True
+    assert tools[1].hosted is False
+    assert tools[1].unhosted_reason == "License prohibits hosted inference"
 
 
 def test_get_schema(mock_http):

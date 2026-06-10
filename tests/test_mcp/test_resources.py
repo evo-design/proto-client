@@ -107,6 +107,8 @@ def client_with_tools():
             category="structure_prediction",
             description="Predict protein structure",
             uses_gpu=True,
+            hosted=True,
+            source_url="https://github.com/facebookresearch/esm",
             citation="@article{esm2}",
             github_url="https://github.com/foo/bar",
         ),

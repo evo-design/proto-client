@@ -120,17 +120,25 @@ class AssetRef(BaseModel):
 
 
 class ToolInfo(BaseModel):
-    """Tool metadata from ``GET /api/v1/tools``."""
+    """Tool metadata from ``GET /api/v1/tools``.
+
+    ``service`` and ``method`` are ``None`` for inline (in-process) tools and
+    for unhosted tools (``hosted=False``); the latter also carry
+    ``unhosted_reason``. Mirrors the tools API's ``ToolInfo``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     key: str
-    service: str
-    method: str
+    service: str | None = None
+    method: str | None = None
     label: str
     category: str
     description: str
     uses_gpu: bool
+    hosted: bool
+    unhosted_reason: str | None = None
+    source_url: str
     github_url: str | None = None
     paper_url: str | None = None
     image_url: str | None = None
@@ -138,7 +146,7 @@ class ToolInfo(BaseModel):
     docs_url: str | None = None
     citation: str | None = None
     example_notebook_url: str | None = None
-    iterable_input_field: str | None = None
+    iterable_input_fields: list[str] | None = None
     iterable_output_field: str | None = None
 
 
@@ -406,20 +414,31 @@ class ValidationResponse(BaseModel):
 class MeResponse(BaseModel):
     """Self-describing principal payload from ``GET /api/v1/me``.
 
-    The capability list is the server's source of truth — clients should
-    read this once at boot rather than re-exporting the same strings as
-    a separate env var. ``is_master`` is set when the request key matched
-    the dev master-key escape hatch on the server; master principals
-    bypass every capability check, so callers should treat ``is_master``
-    as "all capabilities granted" without inspecting the list.
+    Lets a client introspect its workspace + scopes without a second
+    round-trip; read once at boot rather than caching a hand-rolled mirror.
+    Mirrors the runs API's ``MeResponse``.
+
+    Attributes:
+        workspace_id (str): The caller's workspace UUID.
+        workspace_name (str): Human-readable workspace name.
+        key_id (str): The resolving API key's id.
+        scopes (list[str]): Granted scopes — ``full`` (read + dispatch) or ``read_only``.
+        member_user_id (str | None): The member user id for proxy/browser callers; ``None`` for raw API keys.
+        tier (str): ``preview`` (examples-only, no authoring) or ``expanded`` (can author).
+        credit_cap (float | None): Credit ceiling, or ``None`` when uncapped.
+        remaining_credits (float | None): Remaining credits (cap minus spend), floored at 0, or ``None`` when uncapped.
     """
 
     model_config = ConfigDict(frozen=True)
 
+    workspace_id: str
+    workspace_name: str
     key_id: str
-    label: str
-    capabilities: list[str]
-    is_master: bool
+    scopes: list[str]
+    member_user_id: str | None = None
+    tier: str
+    credit_cap: float | None = None
+    remaining_credits: float | None = None
 
 
 class CancelDetails(BaseModel):

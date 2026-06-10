@@ -21,7 +21,16 @@ def _swap_async_runs_transport(client, handler) -> None:
 
 
 def _principal(**overrides):
-    base = {"key_id": "pk_demo", "label": "demo", "capabilities": [], "is_master": False}
+    base = {
+        "workspace_id": "11111111-1111-1111-1111-111111111111",
+        "workspace_name": "Demo Workspace",
+        "key_id": "pk_demo",
+        "scopes": ["full"],
+        "member_user_id": None,
+        "tier": "expanded",
+        "credit_cap": None,
+        "remaining_credits": None,
+    }
     base.update(overrides)
     return base
 
@@ -30,15 +39,20 @@ def test_me_returns_principal_payload():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v1/me"
         assert request.method == "GET"
-        return httpx.Response(200, json=_principal(capabilities=["custom_components:execute"]))
+        return httpx.Response(
+            200, json=_principal(scopes=["read_only"], tier="preview", credit_cap=10.0, remaining_credits=7.0)
+        )
 
     c = ProtoClient(api_key="x")
     _swap_runs_transport(c, handler)
     me = c.me()
+    assert me.workspace_id == "11111111-1111-1111-1111-111111111111"
+    assert me.workspace_name == "Demo Workspace"
     assert me.key_id == "pk_demo"
-    assert me.label == "demo"
-    assert me.capabilities == ["custom_components:execute"]
-    assert me.is_master is False
+    assert me.scopes == ["read_only"]
+    assert me.tier == "preview"
+    assert me.credit_cap == 10.0
+    assert me.remaining_credits == 7.0
     c.close()
 
 
@@ -64,27 +78,31 @@ def test_me_raises_proto_server_error_on_500():
     c.close()
 
 
-def test_me_master_principal_advertises_flag():
+def test_me_uncapped_workspace_reports_null_credits():
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_principal(label="dev-master", is_master=True))
+        return httpx.Response(200, json=_principal(credit_cap=None, remaining_credits=None))
 
     c = ProtoClient(api_key="x")
     _swap_runs_transport(c, handler)
     me = c.me()
-    assert me.is_master is True
-    assert me.capabilities == []
+    assert me.credit_cap is None
+    assert me.remaining_credits is None
+    assert me.member_user_id is None
     c.close()
 
 
 async def test_async_me_returns_principal_payload():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v1/me"
-        return httpx.Response(200, json=_principal(capabilities=["custom_components:execute"]))
+        return httpx.Response(
+            200, json=_principal(scopes=["full"], member_user_id="22222222-2222-2222-2222-222222222222")
+        )
 
     c = AsyncProtoClient(api_key="x")
     _swap_async_runs_transport(c, handler)
     me = await c.me()
-    assert me.capabilities == ["custom_components:execute"]
+    assert me.scopes == ["full"]
+    assert me.member_user_id == "22222222-2222-2222-2222-222222222222"
     await c.aclose()
 
 

@@ -51,6 +51,8 @@ _TOOL_BLAST = ToolInfo(
     category="sequence_search",
     description="Search sequences against NCBI databases",
     uses_gpu=False,
+    hosted=True,
+    source_url="https://blast.ncbi.nlm.nih.gov",
 )
 
 _TOOL_ESMFOLD = ToolInfo(
@@ -61,6 +63,8 @@ _TOOL_ESMFOLD = ToolInfo(
     category="structure_prediction",
     description="Predict protein structure from sequence",
     uses_gpu=True,
+    hosted=True,
+    source_url="https://github.com/facebookresearch/esm",
     citation="@article{esm2,title={Evolutionary-scale prediction}}",
 )
 
