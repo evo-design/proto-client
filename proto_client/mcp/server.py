@@ -34,10 +34,9 @@ mcp = FastMCP(
     instructions=(
         "Proto Bio: a platform for bioinformatics tool execution and biological "
         "sequence optimization. "
-        "Discover tools with list_tools, search_tools, list_categories, "
-        "list_gpu_tools, or list_cpu_tools; inspect with get_tool_schema, "
-        "get_tool_example, get_tool_citation, or list_citations; execute "
-        "with run_tool. "
+        "Discover tools with list_tools (optionally filtered by category / uses_gpu) "
+        "or search_tools; inspect with get_tool_schema or get_tool_example; execute "
+        "with run_tool (citations via the proto-tools://citations/{key} resource). "
         "Discover proto-language components with list_components; design with "
         "create_run / run_stage / get_run_status / cancel_run; fetch results with "
         "get_run_metrics (decimated chart series), get_run_timepoints (paginated "

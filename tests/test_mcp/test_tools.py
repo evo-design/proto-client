@@ -23,13 +23,9 @@ from proto_client.mcp.tools import (
     ComponentsResult,
     _get_client,
     _handle_proto_errors,
-    get_tool_citation_impl,
     get_tool_example_impl,
-    list_categories_impl,
-    list_citations_impl,
     list_components_impl,
-    list_cpu_tools_impl,
-    list_gpu_tools_impl,
+    list_tools_impl,
     register_tools,
     search_tools_impl,
 )
@@ -251,45 +247,30 @@ async def test_list_components_gathers_all_three_registries(mock_client):
     mock_client.runs.list_optimizers.assert_awaited_once()
 
 
-# --- Tool discovery (categories, GPU/CPU, citation, example) ---
+# --- Tool discovery (list_tools filters, example) ---
 
 
-async def test_list_categories_groups_by_category(mock_client):
+async def test_list_tools_filters_by_category(mock_client):
     mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
-    assert await list_categories_impl(mock_client) == {
-        "sequence_search": ["blast-search"],
-        "structure_prediction": ["esmfold-prediction"],
-    }
+    result = await list_tools_impl(mock_client, category="structure_prediction")
+    assert [t.key for t in result] == ["esmfold-prediction"]
 
 
-async def test_list_gpu_and_cpu_tools_partition(mock_client):
+async def test_list_tools_filters_by_uses_gpu(mock_client):
     mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
-    assert [t.key for t in await list_gpu_tools_impl(mock_client)] == ["esmfold-prediction"]
-    assert [t.key for t in await list_cpu_tools_impl(mock_client)] == ["blast-search"]
+    assert [t.key for t in await list_tools_impl(mock_client, uses_gpu=True)] == ["esmfold-prediction"]
+    assert [t.key for t in await list_tools_impl(mock_client, uses_gpu=False)] == ["blast-search"]
 
 
-async def test_get_tool_citation_returns_citation_or_none(mock_client):
+async def test_list_tools_no_filter_returns_all(mock_client):
     mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
-    assert await get_tool_citation_impl(mock_client, "esmfold-prediction") == _TOOL_ESMFOLD.citation
-    # blast has no citation declared
-    assert await get_tool_citation_impl(mock_client, "blast-search") is None
-
-
-async def test_get_tool_citation_unknown_key_raises(mock_client):
-    mock_client.tools.list.return_value = [_TOOL_BLAST]
-    with pytest.raises(ProtoNotFoundError):
-        await get_tool_citation_impl(mock_client, "missing-tool")
+    assert len(await list_tools_impl(mock_client)) == 2
 
 
 async def test_get_tool_example_returns_example_input(mock_client):
     mock_client.tools.get_example.return_value = ToolExample(example_input={"sequences": ["MKTL"]})
     assert await get_tool_example_impl(mock_client, "esmfold-prediction") == {"sequences": ["MKTL"]}
     mock_client.tools.get_example.assert_awaited_once_with("esmfold-prediction")
-
-
-async def test_list_citations_filters_to_tools_with_citations(mock_client):
-    mock_client.tools.list.return_value = [_TOOL_BLAST, _TOOL_ESMFOLD]
-    assert await list_citations_impl(mock_client) == {"esmfold-prediction": _TOOL_ESMFOLD.citation}
 
 
 # --- Registration ---
@@ -304,12 +285,7 @@ async def test_register_tools_attaches_full_surface():
         "list_tools",
         "search_tools",
         "get_tool_schema",
-        "list_categories",
-        "list_gpu_tools",
-        "list_cpu_tools",
-        "get_tool_citation",
         "get_tool_example",
-        "list_citations",
         "run_tool",
         "list_components",
         "validate_program",
@@ -327,11 +303,8 @@ async def test_register_tools_attaches_full_surface():
     ("tool_name", "kwargs"),
     [
         ("list_tools", {}),
-        ("list_categories", {}),
-        ("list_gpu_tools", {}),
-        ("list_cpu_tools", {}),
-        ("get_tool_citation", {"tool_key": "blast-search"}),
-        ("list_citations", {}),
+        ("list_tools", {"category": "sequence_search"}),
+        ("list_tools", {"uses_gpu": False}),
     ],
 )
 async def test_registered_wrapper_routes_through_get_client(tool_name, kwargs):

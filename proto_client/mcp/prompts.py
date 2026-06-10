@@ -190,8 +190,9 @@ Find the right bioinformatics tool for this task and explain how to call it.
 
 ## Workflow
 
-1. **Survey** — call `list_categories` to see what kinds of tools exist.
-2. **Search** — call `search_tools(query="{task}")` for relevance-ranked candidates.
+1. **Search** — call `search_tools(query="{task}")` for relevance-ranked candidates.
+2. **Narrow (optional)** — call `list_tools(category=...)` or `list_tools(uses_gpu=...)` to
+   browse a category or filter by compute.
 3. **Inspect** — for the top 1-3 results, call `get_tool_schema(tool_key)` to see the
    input/config/output contract.
 4. **Try** — call `get_tool_example(tool_key)` for a runnable input dict.
@@ -213,7 +214,7 @@ Give a complete walkthrough of `{tool_key}`.
 1. Call `get_tool_schema("{tool_key}")` to fetch the input, config, and output
    JSON Schemas.
 2. Call `get_tool_example("{tool_key}")` for a minimal runnable input.
-3. Call `get_tool_citation("{tool_key}")` for the BibTeX entry (may be null).
+3. Read `proto-tools://citations/{tool_key}` for the BibTeX entry (may be a placeholder).
 4. Read `proto-tools://tools/{tool_key}` for an assembled metadata view (label,
    schemas, example, citation, and links).
 
