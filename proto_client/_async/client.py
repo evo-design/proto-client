@@ -10,7 +10,7 @@ import httpx
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
-from proto_client._defaults import DEFAULT_RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 from proto_client._http import AsyncRetryTransport, RetryConfig
 from proto_client._version import VERSION
 from proto_client.errors import from_response
@@ -30,7 +30,6 @@ class AsyncProtoClient:
     def __init__(
         self,
         api_key: str | None = None,
-        runs_base_url: str | None = None,
         timeout: float = 600.0,
         max_retries: int = 2,
         retry_config: RetryConfig | None = None,
@@ -41,12 +40,6 @@ class AsyncProtoClient:
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
         if app_user_id == "":
             raise ValueError("app_user_id must not be empty. Pass a non-empty value or omit the argument.")
-
-        resolved_runs_url = (
-            runs_base_url
-            if runs_base_url is not None
-            else (os.environ.get("PROTO_RUNS_BASE_URL") or DEFAULT_RUNS_BASE_URL)
-        )
 
         headers: dict[str, str] = {
             "User-Agent": f"proto-client-python/{VERSION} python/{platform.python_version()}",
@@ -65,7 +58,7 @@ class AsyncProtoClient:
             transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
         runs_http = httpx.AsyncClient(
-            base_url=resolved_runs_url,
+            base_url=RUNS_BASE_URL,
             headers=headers,
             timeout=timeout,
             transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),

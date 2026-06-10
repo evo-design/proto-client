@@ -41,7 +41,7 @@ Only files in the `SYNC_TARGETS` list in `scripts/gen_sync.py` are transformed. 
 ```
 ProtoClient / AsyncProtoClient
 ├── .tools  → ToolsNamespace      (base: hardcoded TOOLS_BASE_URL)
-└── .runs   → RunsNamespace       (base: PROTO_RUNS_BASE_URL)
+└── .runs   → RunsNamespace       (base: hardcoded RUNS_BASE_URL)
               ↓
          httpx.Client / AsyncClient
               ↓
@@ -76,7 +76,7 @@ The server lifespan creates/closes an `AsyncProtoClient` that reads config from 
 
 ## Configuration
 
-- **Env vars**: `PROTO_API_KEY`, `PROTO_RUNS_BASE_URL` (tools URL is fixed)
+- **Env vars**: `PROTO_API_KEY` (both base URLs are fixed)
 - **Defaults**: see `proto_client/_defaults.py`
 
 ## Testing Patterns

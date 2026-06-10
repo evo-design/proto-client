@@ -81,26 +81,17 @@ def test_user_agent_header():
         assert "python/" in ua
 
 
-def test_runs_base_url_from_env(monkeypatch):
-    url = "http://custom-runs:8000"
-    monkeypatch.setenv("PROTO_RUNS_BASE_URL", url)
-    with ProtoClient() as c:
-        assert str(c.runs._http.base_url).rstrip("/") == url
+def test_base_urls_are_fixed():
+    """Both base URLs are hardcoded — env-var hijack attempts are ignored."""
+    from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 
-
-def test_explicit_runs_base_url_overrides_env():
-    with patch.dict(os.environ, {"PROTO_RUNS_BASE_URL": "http://env:8000"}):
-        with ProtoClient(runs_base_url="http://explicit:9000") as c:
-            assert str(c.runs._http.base_url).rstrip("/") == "http://explicit:9000"
-
-
-def test_tools_base_url_is_fixed():
-    """Tools URL is hardcoded — not configurable via kwarg or env var."""
-    from proto_client._defaults import TOOLS_BASE_URL
-
-    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "http://hijack:8000"}):
+    with patch.dict(
+        os.environ,
+        {"PROTO_TOOLS_BASE_URL": "http://hijack-tools:8000", "PROTO_RUNS_BASE_URL": "http://hijack-runs:8000"},
+    ):
         with ProtoClient() as c:
             assert str(c.tools._http.base_url).rstrip("/") == TOOLS_BASE_URL.rstrip("/")
+            assert str(c.runs._http.base_url).rstrip("/") == RUNS_BASE_URL.rstrip("/")
 
 
 def test_close_reraises_first_error():

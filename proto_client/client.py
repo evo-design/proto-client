@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from proto_client._defaults import DEFAULT_RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client._defaults import RUNS_BASE_URL, TOOLS_BASE_URL
 from proto_client._http import RetryConfig, RetryTransport
 from proto_client._version import VERSION
 from proto_client.assets import AssetsNamespace, set_default_assets_namespace
@@ -30,7 +30,6 @@ class ProtoClient:
     def __init__(
         self,
         api_key: str | None = None,
-        runs_base_url: str | None = None,
         timeout: float = 600.0,
         max_retries: int = 2,
         retry_config: RetryConfig | None = None,
@@ -40,8 +39,6 @@ class ProtoClient:
 
         Args:
             api_key: API key for authentication. Falls back to ``PROTO_API_KEY`` env var.
-            runs_base_url: Base URL for the runs API. Falls back to
-                ``PROTO_RUNS_BASE_URL`` env var, then the package default.
             timeout: Default request timeout in seconds.
             max_retries: Number of retry attempts for failed requests. Ignored if
                 *retry_config* is provided.
@@ -55,12 +52,6 @@ class ProtoClient:
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
         if app_user_id == "":
             raise ValueError("app_user_id must not be empty. Pass a non-empty value or omit the argument.")
-
-        resolved_runs_url = (
-            runs_base_url
-            if runs_base_url is not None
-            else (os.environ.get("PROTO_RUNS_BASE_URL") or DEFAULT_RUNS_BASE_URL)
-        )
 
         headers: dict[str, str] = {
             "User-Agent": f"proto-client-python/{VERSION} python/{platform.python_version()}",
@@ -79,7 +70,7 @@ class ProtoClient:
             transport=RetryTransport(httpx.HTTPTransport(), config=cfg),
         )
         runs_http = httpx.Client(
-            base_url=resolved_runs_url,
+            base_url=RUNS_BASE_URL,
             headers=headers,
             timeout=timeout,
             transport=RetryTransport(httpx.HTTPTransport(), config=cfg),
