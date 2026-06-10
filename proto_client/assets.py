@@ -94,8 +94,7 @@ class AssetsNamespace:
         client = self._clients_by_origin.get(origin)
         if client is None:
             raise ValueError(
-                f"AssetRef URL {url!r} doesn't match any configured base URL "
-                f"({sorted(self._clients_by_origin)})."
+                f"AssetRef URL {url!r} doesn't match any configured base URL ({sorted(self._clients_by_origin)})."
             )
         return client
 
