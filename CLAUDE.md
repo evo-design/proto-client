@@ -32,7 +32,7 @@ The async code in `proto_client/_async/` is the **source of truth**. The sync `p
 
 **When editing runs logic**: modify `_async/runs.py`, then run `python scripts/gen_sync.py`. Never edit `runs.py` directly. CI runs `gen_sync.py` and checks `git diff --exit-code` to enforce this.
 
-Only files in the `SYNC_TARGETS` list in `scripts/gen_sync.py` are transformed. Currently that's just `runs.py`. If adding a new async namespace to `_async/`, add it to `SYNC_TARGETS`.
+Only files in the `SYNC_TARGETS` list in `scripts/gen_sync.py` are transformed. Currently those are `_ndjson.py` and `runs.py`. If adding a new async namespace to `_async/`, add it to `SYNC_TARGETS`.
 
 **Exception**: `tools.py` and `_async/tools.py` are **both hand-written** (they intentionally diverge). Edit each independently.
 
