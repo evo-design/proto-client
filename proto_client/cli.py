@@ -18,8 +18,8 @@ from typing import Any
 import httpx
 
 from proto_client import ProtoClient
-from proto_client.client import _coerce_to_assetref
 from proto_client.errors import ProtoAPIError
+from proto_client.utils.asset_helpers import coerce_assetref, walk_assetrefs
 
 
 def _read_json(path: str) -> Any:
@@ -44,8 +44,11 @@ def _download_assets(value: Any, client: ProtoClient, out_dir: Path, seen: dict[
     Each unique asset id is fetched once; filename collisions across distinct
     ids are disambiguated with the id stem.
     """
-    ref = _coerce_to_assetref(value)
-    if ref is not None:
+
+    def _download(ref_value: Any) -> Any:
+        ref = coerce_assetref(ref_value)
+        if ref is None:  # pragma: no cover - walk_assetrefs only yields refs
+            return ref_value
         if ref.id in seen:
             return str(seen[ref.id])
         dest = out_dir / ref.suggested_filename()
@@ -54,11 +57,8 @@ def _download_assets(value: Any, client: ProtoClient, out_dir: Path, seen: dict[
         client.assets.download(ref, dest)
         seen[ref.id] = dest
         return str(dest)
-    if isinstance(value, dict):
-        return {k: _download_assets(v, client, out_dir, seen) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_download_assets(v, client, out_dir, seen) for v in value]
-    return value
+
+    return walk_assetrefs(value, _download)
 
 
 # --- Commands (each takes an explicit client; returns an exit code) ---

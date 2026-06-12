@@ -10,9 +10,10 @@ import httpx
 
 from proto_client.assets import AssetsNamespace
 from proto_client.errors import from_response
-from proto_client.models import AssetRef, MeResponse
+from proto_client.models import MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
+from proto_client.utils.asset_helpers import coerce_assetref, walk_assetrefs
 from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
 from proto_client.utils.http import RetryConfig, RetryTransport
 from proto_client.utils.version import VERSION
@@ -184,8 +185,11 @@ def _materialize_assetrefs(
     HTTP failures yield a 0-byte ``<name>.missing`` placeholder so a single bad asset
     doesn't abort the whole export.
     """
-    ref = _coerce_to_assetref(value)
-    if ref is not None:
+
+    def _materialize(ref_value: Any) -> Any:
+        ref = coerce_assetref(ref_value)
+        if ref is None:  # pragma: no cover - walk_assetrefs only yields refs
+            return ref_value
         if ref.id in seen:
             return f"assets/{seen[ref.id]}"
         filename = _resolve_filename_collision(ref.suggested_filename(), ref.id, set(seen.values()))
@@ -198,24 +202,8 @@ def _materialize_assetrefs(
             dest.write_bytes(b"")
         seen[ref.id] = filename
         return f"assets/{filename}"
-    if isinstance(value, dict):
-        return {k: _materialize_assetrefs(v, assets_ns, assets_dir, seen) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_materialize_assetrefs(v, assets_ns, assets_dir, seen) for v in value]
-    return value
 
-
-def _coerce_to_assetref(value: Any) -> AssetRef | None:
-    """Return a typed AssetRef when *value* is one already, or when its dict shape matches; else None."""
-    if isinstance(value, AssetRef):
-        return value
-    if (
-        isinstance(value, dict)
-        and isinstance(value.get("id"), str)
-        and value.get("kind") in ("output", "reference_db", "user_upload")
-    ):
-        return AssetRef.model_validate(value)
-    return None
+    return walk_assetrefs(value, _materialize)
 
 
 def _resolve_filename_collision(filename: str, asset_id: str, taken: set[str]) -> str:
