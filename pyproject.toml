@@ -49,6 +49,7 @@ dev = [
 ]
 
 [project.scripts]
+proto-client = "proto_client.cli:main"
 proto-client-mcp = "proto_client.mcp.__main__:main"
 
 [tool.pytest.ini_options]
@@ -107,6 +108,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"proto_client/cli.py" = ["T20"]  # CLI entry point: print() is the right way to emit to stdout
 "proto_client/mcp/tools.py" = [
     "D417",     # ctx: Context is auto-injected by FastMCP, not a user-facing parameter
 ]

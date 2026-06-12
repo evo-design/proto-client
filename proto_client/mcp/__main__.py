@@ -4,6 +4,22 @@ import argparse
 import os
 
 
+def run_server(transport: str, host: str, port: int | None) -> None:
+    """Launch the MCP server with the given transport configuration.
+
+    Shared by ``python -m proto_client.mcp`` and the ``proto-client mcp`` CLI
+    subcommand. ``port=None`` resolves to ``$PORT`` then 9300 for http.
+    """
+    from proto_client.mcp.server import mcp
+
+    if transport == "stdio":
+        mcp.run()
+        return
+
+    resolved_port = port if port is not None else int(os.environ.get("PORT") or 9300)
+    mcp.run(transport="http", host=host, port=resolved_port, stateless_http=True)
+
+
 def main() -> None:
     """Parse CLI args and run the Proto Bio MCP server."""
     parser = argparse.ArgumentParser(description="Proto Bio MCP server")
@@ -17,14 +33,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=None, help="HTTP port (default: $PORT or 9300)")
     args = parser.parse_args()
 
-    from proto_client.mcp.server import mcp
-
-    if args.transport == "stdio":
-        mcp.run()
-        return
-
-    port = args.port if args.port is not None else int(os.environ.get("PORT") or 9300)
-    mcp.run(transport="http", host=args.host, port=port, stateless_http=True)
+    run_server(args.transport, args.host, args.port)
 
 
 if __name__ == "__main__":
