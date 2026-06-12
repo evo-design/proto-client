@@ -34,6 +34,7 @@ mcp = FastMCP(
     instructions=(
         "Proto Bio: a platform for bioinformatics tool execution and biological "
         "sequence optimization. "
+        "Call whoami to confirm the calling key's workspace, scopes, and remaining credits. "
         "Discover tools with list_tools (optionally filtered by category / uses_gpu) "
         "or search_tools; inspect with get_tool_schema or get_tool_example; execute "
         "with run_tool (citations via the proto-tools://citations/{key} resource). "

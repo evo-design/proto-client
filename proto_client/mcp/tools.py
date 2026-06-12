@@ -44,6 +44,7 @@ from proto_client.models import (
     CreateRunResponse,
     GeneratorSpec,
     JobStatusResponse,
+    MeResponse,
     OptimizerSpec,
     PaginatedTimepoints,
     RunResponse,
@@ -163,6 +164,11 @@ class ComponentsResult(BaseModel):
 
 
 # --- Tool implementations (testable directly with a mock client) ---
+
+
+async def whoami_impl(client: AsyncProtoClient) -> MeResponse:
+    """Return the calling key's workspace, scopes, tier, and remaining credits."""
+    return await client.me()
 
 
 async def list_tools_impl(
@@ -444,6 +450,13 @@ async def get_run_timepoint_impl(
 
 
 @_handle_proto_errors
+async def whoami(ctx: Context) -> MeResponse:
+    """Show the calling key's workspace, scopes, tier, and remaining credits."""
+    async with _get_client(ctx) as client:
+        return await whoami_impl(client)
+
+
+@_handle_proto_errors
 async def list_tools(ctx: Context, category: str | None = None, uses_gpu: bool | None = None) -> list[ToolInfo]:
     """List available bioinformatics tools, optionally filtered by category and/or GPU need."""
     async with _get_client(ctx) as client:
@@ -578,6 +591,14 @@ async def get_run_timepoint(
 
 def register_tools(mcp: FastMCP) -> None:
     """Register all MCP tool handlers on the given FastMCP instance."""
+    mcp.tool(
+        description=(
+            "Show the calling API key's principal: workspace, scopes (full / read_only), tier, "
+            "and remaining credits. Call once at startup to confirm auth and capabilities."
+        ),
+        annotations={"readOnlyHint": True},
+    )(whoami)
+
     mcp.tool(
         description=(
             "List available bioinformatics tools (metadata: key, label, category, "
