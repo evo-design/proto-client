@@ -13,7 +13,7 @@ from proto_client.errors import from_response
 from proto_client.models import AssetRef, MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
-from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
 from proto_client.utils.http import RetryConfig, RetryTransport
 from proto_client.utils.version import VERSION
 
@@ -34,6 +34,8 @@ class ProtoClient:
         max_retries: int = 2,
         retry_config: RetryConfig | None = None,
         app_user_id: str | None = None,
+        tools_base_url: str | None = None,
+        runs_base_url: str | None = None,
     ) -> None:
         """Initialize the client.
 
@@ -46,6 +48,12 @@ class ProtoClient:
             app_user_id: End-user identifier sent as ``x-app-user-id`` on every request.
                 Scopes server-side ownership and asset access checks to this identity.
                 Omit when the caller is acting at the platform/admin level.
+            tools_base_url: Override the the tools API base URL (for testing or staging).
+                Falls back to ``PROTO_TOOLS_BASE_URL`` then the packaged default.
+                A non-default URL must use https unless it is a loopback host.
+            runs_base_url: Override the the runs API base URL (for testing or staging).
+                Falls back to ``PROTO_RUNS_BASE_URL`` then the packaged default.
+                A non-default URL must use https unless it is a loopback host.
         """
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
@@ -62,15 +70,17 @@ class ProtoClient:
             headers["x-app-user-id"] = app_user_id
 
         cfg = retry_config or RetryConfig(max_retries=max_retries)
+        tools_url = resolve_base_url(tools_base_url, env_var="PROTO_TOOLS_BASE_URL", default=TOOLS_BASE_URL)
+        runs_url = resolve_base_url(runs_base_url, env_var="PROTO_RUNS_BASE_URL", default=RUNS_BASE_URL)
 
         tools_http = httpx.Client(
-            base_url=TOOLS_BASE_URL,
+            base_url=tools_url,
             headers=headers,
             timeout=timeout,
             transport=RetryTransport(httpx.HTTPTransport(), config=cfg),
         )
         runs_http = httpx.Client(
-            base_url=RUNS_BASE_URL,
+            base_url=runs_url,
             headers=headers,
             timeout=timeout,
             transport=RetryTransport(httpx.HTTPTransport(), config=cfg),
