@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import httpx
@@ -65,6 +66,25 @@ def test_download_assets_walk(tmp_path):
     assert result["score"] == 1.0
     assert result["structure"] == str(tmp_path / "out.txt")
     assert (tmp_path / "out.txt").read_bytes() == b"PDBDATA"
+
+
+def test_download_assets_disambiguates_colliding_filenames(tmp_path):
+    """Two distinct assets that share a filename must not clobber each other."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=request.url.path.encode())  # distinct bytes per asset id
+
+    http = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://api.test")
+    client = MagicMock()
+    client.assets = AssetsNamespace([http])
+    ref1 = {"id": "a1", "kind": "output", "filename": "structure.pdb", "url": "https://api.test/a1"}
+    ref2 = {"id": "a2", "kind": "output", "filename": "structure.pdb", "url": "https://api.test/a2"}
+
+    result = _download_assets({"x": ref1, "y": ref2}, client, tmp_path, {})
+
+    assert result["x"] != result["y"]
+    assert Path(result["x"]).read_bytes() == b"/a1"
+    assert Path(result["y"]).read_bytes() == b"/a2"
 
 
 def test_runs_submit_prints_run_id(tmp_path, capsys):

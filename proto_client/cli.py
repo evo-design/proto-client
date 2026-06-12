@@ -49,7 +49,7 @@ def _download_assets(value: Any, client: ProtoClient, out_dir: Path, seen: dict[
         if ref.id in seen:
             return str(seen[ref.id])
         dest = out_dir / ref.suggested_filename()
-        if dest.exists() and dest not in seen.values():
+        if dest.exists():
             dest = out_dir / f"{Path(ref.id).name}_{dest.name}"
         client.assets.download(ref, dest)
         seen[ref.id] = dest
@@ -193,7 +193,10 @@ def _dispatch(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 1
-        run_server(args.transport, args.host, args.port)
+        try:
+            run_server(args.transport, args.host, args.port)
+        except KeyboardInterrupt:
+            return 130
         return 0
 
     try:
