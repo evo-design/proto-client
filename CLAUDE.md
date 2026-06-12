@@ -76,8 +76,7 @@ The server lifespan creates/closes an `AsyncProtoClient` that reads config from 
 
 ## Configuration
 
-- **Env vars**: `PROTO_API_KEY`; per-service base-URL overrides `PROTO_TOOLS_BASE_URL` / `PROTO_RUNS_BASE_URL`
-- **Base URLs**: resolved per service via `resolve_base_url()` (`utils/defaults.py`) as `constructor arg (tools_base_url / runs_base_url) → env var → packaged default`. A non-default URL must use https unless it is a loopback host (`localhost` / `127.0.0.1` / `::1`), and a non-default URL is logged at INFO.
+- **Env vars**: `PROTO_API_KEY`
 - **Defaults**: see `proto_client/utils/defaults.py`
 
 ## Testing Patterns
