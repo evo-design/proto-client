@@ -257,9 +257,6 @@ async def run_tool_impl(
 # --- Asset inlining for agent-facing results ---
 
 _INLINE_MIME_EXACT = frozenset({"application/json", "application/json+gzip"})
-# Structures (chemical/*) are deliberately excluded: an LLM can't use raw atomic
-# coordinates inline, downstream tools take the ref (not the text), so inlining them
-# only floods the agent's context. They stay as refs to pull on demand with fetch_asset.
 _INLINE_MIME_PREFIXES = ("text/",)
 _MAX_INLINE_BYTES = 32 * 1024  # keep an inlined asset small enough not to blow agent context; larger stay refs
 
