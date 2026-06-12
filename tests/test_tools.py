@@ -58,7 +58,7 @@ def test_list_accepts_inline_and_unhosted_tools_with_null_service(mock_http):
     mock_http.get.return_value = mock_response(
         [
             {
-                "key": "pdb-fetch-entry",  # inline tool: runs in the gateway, no remote service
+                "key": "pdb-fetch-entry",  # inline tool: runs in the gateway, no separate service
                 "service": None,
                 "method": None,
                 "label": "PDB Fetch Entry",

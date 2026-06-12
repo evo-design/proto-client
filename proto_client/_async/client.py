@@ -12,7 +12,7 @@ from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
 from proto_client.errors import from_response
 from proto_client.models import MeResponse
-from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL
+from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
 from proto_client.utils.http import AsyncRetryTransport, RetryConfig
 from proto_client.utils.version import VERSION
 
@@ -34,6 +34,8 @@ class AsyncProtoClient:
         max_retries: int = 2,
         retry_config: RetryConfig | None = None,
         app_user_id: str | None = None,
+        tools_base_url: str | None = None,
+        runs_base_url: str | None = None,
     ) -> None:
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
@@ -50,15 +52,17 @@ class AsyncProtoClient:
             headers["x-app-user-id"] = app_user_id
 
         cfg = retry_config or RetryConfig(max_retries=max_retries)
+        tools_url = resolve_base_url(tools_base_url, env_var="PROTO_TOOLS_BASE_URL", default=TOOLS_BASE_URL)
+        runs_url = resolve_base_url(runs_base_url, env_var="PROTO_RUNS_BASE_URL", default=RUNS_BASE_URL)
 
         tools_http = httpx.AsyncClient(
-            base_url=TOOLS_BASE_URL,
+            base_url=tools_url,
             headers=headers,
             timeout=timeout,
             transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
         )
         runs_http = httpx.AsyncClient(
-            base_url=RUNS_BASE_URL,
+            base_url=runs_url,
             headers=headers,
             timeout=timeout,
             transport=AsyncRetryTransport(httpx.AsyncHTTPTransport(), config=cfg),
