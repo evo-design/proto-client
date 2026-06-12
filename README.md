@@ -1,31 +1,45 @@
+# 🧬 Proto Client 🐍
+
+![Proto Client](https://proto-bio.github.io/proto-assets/default/hero.png)
+
 [![Checks](https://github.com/evo-design/proto-client/actions/workflows/checks.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/checks.yml)
 [![Unit Tests](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/evs3Unkegv)
 
-# proto-client
+`proto-client` is the official Python SDK for the **Proto Bio APIs**. It gives you typed, authenticated access to the whole platform from a few lines of Python: run any of **60+ bioinformatics tools**, submit constraint-based **optimization runs**, stream live logs, and download result assets, all behind one client.
 
-Python SDK for Proto Bio APIs.
+The SDK ships a synchronous `ProtoClient` and an asynchronous `AsyncProtoClient` with the same surface, fully type-checked responses, and transport-level retries. It also bundles an **MCP server**, so Claude, Cursor, VS Code Copilot, and any other MCP-compatible agent can drive the same APIs through natural language.
 
 ## Related Repositories
 
-- [`proto-language`](https://github.com/evo-design/proto-language) – Core language framework (constraints, generators, optimizers)
+- [`proto-language`](https://github.com/evo-design/proto-language) – High-level programming language for generative biology
 - [`proto-tools`](https://github.com/evo-design/proto-tools) – Bioinformatics tool wrappers with isolated environments
 
 ## Installation
+
+All you need is Python 3.10+ and pip:
 
 ```bash
 pip install proto-client
 ```
 
-## Usage
+For the MCP server, install the optional extra:
+
+```bash
+pip install proto-client[mcp]
+```
+
+## Quickstart
+
+Set `PROTO_API_KEY` in your environment (or pass `api_key=` explicitly), then:
 
 ```python
 from proto_client import ProtoClient
 
-client = ProtoClient(api_key="...")
+client = ProtoClient()
 
-# Run a tool (the tools API)
-result = client.tools.run("esmfold-prediction", {"sequences": ["MKTL"]})
+# Run a bioinformatics tool and poll to completion (the tools API)
+job = client.tools.run("esmfold-prediction", {"sequences": ["MKTL"]})
 
 # Submit an optimization run and poll to completion (the runs API)
 run = client.runs.run(program_data={...})
@@ -33,28 +47,19 @@ run = client.runs.run(program_data={...})
 
 ### Async
 
+Every namespace has an identical async surface. `await` the calls and use the client as an async context manager:
+
 ```python
 from proto_client import AsyncProtoClient
 
-async with AsyncProtoClient(api_key="...") as client:
+async with AsyncProtoClient() as client:
     run = await client.runs.create(program_data={...})
     status = await client.runs.get(run.run_id)
 ```
 
-Set `PROTO_API_KEY` to skip passing `api_key=` each time.
+## Working with output assets
 
-### Working with output assets
-
-Large cloud outputs can be returned as `AssetRef` objects instead of inline
-strings or JSON arrays. The SDK asset helpers work with API-readable refs:
-an `AssetRef` object or raw dict that includes a `url` pointing back to one of
-the configured Proto API origins. They are intended for `kind="output"` refs
-returned in tool-job or run results.
-
-Not every `AssetRef` is fetchable: upload allocation refs, reference database
-refs without an API-readable URL, refs missing `url`, and non-Proto URLs are
-rejected. The client fetches through authenticated Proto API origins and strips
-authentication headers before following any redirect away from those origins.
+Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON. The `client.assets` namespace fetches their bytes on demand:
 
 | Method | Return value | MIME handling | Use when |
 |---|---|---|---|
@@ -62,21 +67,10 @@ authentication headers before following any redirect away from those origins.
 | `client.assets.get(ref)` | raw `bytes` in memory | none; preserves exact stored bytes | you explicitly want raw bytes |
 | `client.assets.decode(ref)` | Python object, text, or bytes | decodes by `mime_type` | you want a convenient in-Python value |
 
-`decode()` maps `application/json+gzip` to gunzipped JSON,
-`application/json` / `*+json` to JSON, `chemical/*` / `text/*` to UTF-8 text,
-and unknown MIME types to raw bytes. It loads the full asset into memory, so
-prefer `download()` for large logits, PAE matrices, embeddings, and other dense
-outputs.
-
-Typed tool output validation stays lazy. If an output model declares an
-`AssetRef` field, validation preserves the ref. If it declares the old raw
-shape, such as `list[list[float]]`, validation fails normally; the SDK does not
-silently download large assets during validation.
+`decode()` maps `application/json+gzip` to gunzipped JSON, `application/json` / `*+json` to JSON, and `chemical/*` / `text/*` to UTF-8 text; unknown MIME types stay raw bytes. It loads the full asset into memory, so prefer `download()` for large outputs.
 
 ```python
-from proto_client import ProtoClient
-
-client = ProtoClient(api_key="...")
+client = ProtoClient()
 
 job = client.tools.run("evo2-score", inputs, config)
 logits_ref = job.result["scores"][0]["logits"]
@@ -89,23 +83,18 @@ pdb_output = tp.results[0].constructs[0].segments[0].constraints["fold"].data["p
 pdb_text = client.assets.decode(pdb_output)
 ```
 
-Async clients expose the same namespace with `await`:
+The client fetches only through authenticated Proto API origins, and strips authentication headers before following any redirect away from those origins. Not every ref is fetchable: upload-allocation refs, reference-database refs without an API-readable URL, and refs missing a `url` are rejected. Async clients expose the same namespace with `await`.
 
-```python
-async with AsyncProtoClient(api_key="...") as client:
-    pdb_text = await client.assets.decode(pdb_output)
-```
+## Exporting a run's results
 
-### Exporting a run's results to a folder
-
-There are two routes depending on where the program ran:
+There are two export routes, depending on where the program ran:
 
 | Where the program ran | Use | What you get |
 |---|---|---|
-| Locally in Python (`program.run()`) with maybe-cloud tool dispatches | `client.export_program(program, "out/")` | Folder with 4 CSV tables + `sequences.fasta` + `assets/`; writes local `seq.structure` / `seq.logits` from the in-memory program and downloads any AssetRefs found in metadata |
-| On the server (submitted via `client.runs.create(...)`) | `client.runs.export(run_id, "out.zip")` | Server-built zip with 4 CSV tables + FASTA + `program.json` + `manifest.json` + `assets/` |
+| Locally in Python (`program.run()`) | `client.export_program(program, "out/")` | Folder with 4 CSV tables + `sequences.fasta` + `assets/`; writes local `seq.structure` / `seq.logits` and downloads any AssetRefs found in metadata |
+| On the server (`client.runs.create(...)`) | `client.runs.export(run_id, "out.zip")` | Server-built zip with 4 CSV tables + FASTA + `program.json` + `manifest.json` + `assets/` |
 
-The two cover non-overlapping data. The local route needs the live `Program` object (because `seq.structure` / `seq.logits` only exist client-side). The server route needs a `run_id` (because the results live in the API database). Pick by which one you have.
+The two cover non-overlapping data: the local route needs the live `Program` object (because `seq.structure` / `seq.logits` only exist client-side), the server route needs a `run_id` (because the results live in the API database). Pick by which one you have.
 
 ```python
 # Local Program (proto-language installed alongside proto-client)
@@ -118,17 +107,17 @@ run = client.runs.run(program_data=...)  # creates and polls to terminal status
 client.runs.export(run.id, "out.zip")
 ```
 
-For per-asset downloads (when you just want one PDB, not the whole bundle), use `client.assets.download(ref, path)`.
+For a single asset rather than the whole bundle, use `client.assets.download(ref, path)`.
 
-## Using with AI Agents (MCP)
+## Using with AI agents (MCP)
 
-Proto Bio exposes an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
+Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
 
 ```bash
 pip install proto-client[mcp]
 ```
 
-Add to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
+Add it to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
 
 ```json
 {
@@ -144,25 +133,19 @@ Add to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
 
 The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`) and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
 
-A `proto-client-mcp` CLI script is also installed:
+A `proto-client-mcp` CLI script is installed alongside:
 
 ```bash
-proto-client-mcp                                       # stdio (default)
+proto-client-mcp                                        # stdio (default)
 proto-client-mcp --transport http --port 9300           # HTTP
 ```
 
-## Development: async-first with unasync
+## Development
 
-`AsyncRunsNamespace` (in `proto_client/_async/runs.py`) is the source of
-truth. The sync `RunsNamespace` (`proto_client/runs.py`) is **generated**
-from it via [unasync](https://github.com/python-trio/unasync) — a
-token-level transform configured in `scripts/gen_sync.py`. The generated
-file is committed to the repo, and a CI check verifies it stays in sync.
-To regenerate manually:
+The async modules in `proto_client/_async/` are the **source of truth**. Their sync mirrors (`proto_client/runs.py` and `proto_client/_ndjson.py`) are **generated** from them via [unasync](https://github.com/python-trio/unasync), a token-level transform configured in `scripts/gen_sync.py`. The generated files are committed, and a CI check verifies they stay in sync. To regenerate after editing an async source:
 
 ```bash
 python scripts/gen_sync.py
 ```
 
-Do not edit `proto_client/runs.py` directly — your changes will be
-overwritten on the next regen.
+Do not edit the generated sync files directly; your changes will be overwritten on the next regen. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, conventions, and testing notes.
