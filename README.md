@@ -57,20 +57,6 @@ async with AsyncProtoClient() as client:
     status = await client.runs.get(run.run_id)
 ```
 
-### Pointing at another environment
-
-Both clients default to Proto's hosted services. For testing or staging you can override either base URL per service, via a constructor argument or an environment variable:
-
-```python
-client = ProtoClient(
-    tools_base_url="https://tools.staging.example.com",
-    runs_base_url="https://runs.staging.example.com",
-)
-# or: PROTO_TOOLS_BASE_URL / PROTO_RUNS_BASE_URL in the environment
-```
-
-A non-default URL must use `https://`; `localhost` / `127.0.0.1` may use `http://` for local development.
-
 ## Working with output assets
 
 Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON. The `client.assets` namespace fetches their bytes on demand:
