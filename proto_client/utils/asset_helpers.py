@@ -2,6 +2,7 @@
 
 import gzip
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import urlparse
 
@@ -95,3 +96,46 @@ def strip_sensitive_redirect_headers(request: httpx.Request) -> None:
     """Drop auth/cookie headers from *request* before it follows a redirect off a Proto origin."""
     for name in SENSITIVE_REDIRECT_HEADERS:
         request.headers.pop(name, None)
+
+
+# --- AssetRef detection + recursive walk (shared by the CLI, MCP, and export) ---
+
+_ASSET_KINDS = ("output", "reference_db", "user_upload")
+
+
+def is_assetref(value: Any) -> bool:
+    """True if *value* is an :class:`AssetRef` or an AssetRef-shaped dict (``id`` str + known ``kind``)."""
+    if isinstance(value, AssetRef):
+        return True
+    return isinstance(value, dict) and isinstance(value.get("id"), str) and value.get("kind") in _ASSET_KINDS
+
+
+def coerce_assetref(value: Any) -> AssetRef | None:
+    """Return a typed :class:`AssetRef` when *value* is one (instance or matching dict), else ``None``."""
+    if isinstance(value, AssetRef):
+        return value
+    if is_assetref(value):
+        return AssetRef.model_validate(value)
+    return None
+
+
+def walk_assetrefs(value: Any, transform: Callable[[Any], Any]) -> Any:
+    """Recursively replace each AssetRef in *value* with ``transform(ref)``; non-ref nodes pass through unchanged."""
+    if is_assetref(value):
+        return transform(value)
+    if isinstance(value, dict):
+        return {k: walk_assetrefs(v, transform) for k, v in value.items()}
+    if isinstance(value, list):
+        return [walk_assetrefs(item, transform) for item in value]
+    return value
+
+
+async def awalk_assetrefs(value: Any, transform: Callable[[Any], Awaitable[Any]]) -> Any:
+    """Async sibling of :func:`walk_assetrefs`; *transform* is awaited on each ref."""
+    if is_assetref(value):
+        return await transform(value)
+    if isinstance(value, dict):
+        return {k: await awalk_assetrefs(v, transform) for k, v in value.items()}
+    if isinstance(value, list):
+        return [await awalk_assetrefs(item, transform) for item in value]
+    return value

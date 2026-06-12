@@ -298,6 +298,13 @@ _ASSET_BIG = {
     "size_bytes": 5_000_000,
     "url": "https://api.test/api/v1/assets/a2",
 }
+_ASSET_STRUCTURE = {
+    "id": "a3",
+    "kind": "output",
+    "mime_type": "chemical/x-pdb",
+    "size_bytes": 4096,
+    "url": "https://api.test/api/v1/assets/a3",
+}
 
 
 async def test_inline_assets_inlines_small_ref(mock_client):
@@ -313,9 +320,22 @@ async def test_inline_assets_leaves_large_ref_untouched(mock_client):
     mock_client.assets.decode.assert_not_awaited()
 
 
+async def test_inline_assets_never_inlines_structures(mock_client):
+    """chemical/* structures stay as refs even when small — raw coordinates would flood context, and downstream tools take the ref."""
+    out = await _inline_assets({"structure": _ASSET_STRUCTURE}, mock_client.assets)
+    assert out == {"structure": _ASSET_STRUCTURE}
+    mock_client.assets.decode.assert_not_awaited()
+
+
 async def test_fetch_asset_decodes_small_content(mock_client):
     mock_client.assets.decode.return_value = "ATOM  1  N"
     assert await fetch_asset_impl(mock_client, _ASSET_SMALL_JSON) == "ATOM  1  N"
+
+
+async def test_fetch_asset_still_returns_structure_when_asked(mock_client):
+    """Structures aren't auto-inlined, but the agent can still pull one explicitly via fetch_asset."""
+    mock_client.assets.decode.return_value = "HEADER\nATOM  1  N"
+    assert await fetch_asset_impl(mock_client, _ASSET_STRUCTURE) == "HEADER\nATOM  1  N"
 
 
 async def test_fetch_asset_refuses_oversize(mock_client):

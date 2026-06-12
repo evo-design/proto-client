@@ -54,6 +54,7 @@ from proto_client.models import (
     ToolSchema,
     ValidationResponse,
 )
+from proto_client.utils.asset_helpers import awalk_assetrefs, is_assetref
 
 logger = logging.getLogger(__name__)
 
@@ -256,18 +257,16 @@ async def run_tool_impl(
 # --- Asset inlining for agent-facing results ---
 
 _INLINE_MIME_EXACT = frozenset({"application/json", "application/json+gzip"})
-_INLINE_MIME_PREFIXES = ("chemical/", "text/")
-_MAX_INLINE_BYTES = 256 * 1024  # inline decodable assets at or below this; larger stay refs for fetch_asset
+# Structures (chemical/*) are deliberately excluded: an LLM can't use raw atomic
+# coordinates inline, downstream tools take the ref (not the text), so inlining them
+# only floods the agent's context. They stay as refs to pull on demand with fetch_asset.
+_INLINE_MIME_PREFIXES = ("text/",)
+_MAX_INLINE_BYTES = 32 * 1024  # keep an inlined asset small enough not to blow agent context; larger stay refs
 
 
 def _is_asset_ref(value: Any) -> bool:
-    """True if *value* is an API-readable AssetRef-shaped dict (id + output-ish kind + url)."""
-    return (
-        isinstance(value, dict)
-        and isinstance(value.get("id"), str)
-        and value.get("kind") in ("output", "reference_db", "user_upload")
-        and isinstance(value.get("url"), str)
-    )
+    """True if *value* is a fetchable AssetRef-shaped dict (a shaped ref carrying a url)."""
+    return isinstance(value, dict) and is_assetref(value) and isinstance(value.get("url"), str)
 
 
 def _is_decodable(mime: str) -> bool:
@@ -296,25 +295,25 @@ async def _inline_assets(value: Any, assets: AsyncAssetsNamespace) -> Any:
     Inlining is a best-effort enhancement over an already-valid result, so ANY per-asset
     fetch/decode failure leaves that ref in place rather than failing the whole result.
     """
-    if _is_asset_ref(value):
-        size = value.get("size_bytes")
-        mime = value.get("mime_type") or ""
+
+    async def _inline(ref_value: Any) -> Any:
+        if not _is_asset_ref(ref_value):  # non-fetchable / url-less ref → leave in place
+            return ref_value
+        size = ref_value.get("size_bytes")
+        mime = ref_value.get("mime_type") or ""
         if _is_decodable(mime) and isinstance(size, int) and 0 <= size <= _MAX_INLINE_BYTES:
             try:
-                decoded = await assets.decode(value)
+                decoded = await assets.decode(ref_value)
             except Exception as exc:  # broad on purpose: one bad asset must not fail the whole tool result
-                logger.warning("Could not inline asset %s; leaving ref in place: %s", value.get("id"), exc)
-                return value
+                logger.warning("Could not inline asset %s; leaving ref in place: %s", ref_value.get("id"), exc)
+                return ref_value
             # `size` is the *stored* size; a +gzip payload can decode far larger, so re-check
             # the decoded size to keep an expanded asset from blowing out the agent context.
             if _decoded_byte_len(decoded) <= _MAX_INLINE_BYTES:
                 return decoded
-        return value
-    if isinstance(value, dict):
-        return {k: await _inline_assets(v, assets) for k, v in value.items()}
-    if isinstance(value, list):
-        return [await _inline_assets(item, assets) for item in value]
-    return value
+        return ref_value
+
+    return await awalk_assetrefs(value, _inline)
 
 
 async def fetch_asset_impl(client: AsyncProtoClient, ref: dict[str, Any], max_bytes: int = 1_000_000) -> Any:

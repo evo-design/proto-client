@@ -13,8 +13,9 @@ import numpy as np
 
 from proto_client import ProtoClient
 from proto_client.assets import AssetsNamespace
-from proto_client.client import _coerce_to_assetref, _materialize_assetrefs, _resolve_filename_collision
+from proto_client.client import _materialize_assetrefs, _resolve_filename_collision
 from proto_client.models import AssetRef
+from proto_client.utils.asset_helpers import coerce_assetref
 
 
 def _mock_http(handler, base_url: str = "https://api.test") -> httpx.Client:
@@ -83,13 +84,13 @@ def _make_results_with_payloads() -> dict:
 def test_coerce_to_assetref_recognizes_typed_and_dict_forms() -> None:
     """Typed AssetRef passes through; dict-shaped values validate; non-AssetRef shapes return None."""
     typed = AssetRef(id="asset_x", kind="output")
-    assert _coerce_to_assetref(typed) is typed
-    assert _coerce_to_assetref({"id": "asset_x", "kind": "output"}) == typed
+    assert coerce_assetref(typed) is typed
+    assert coerce_assetref({"id": "asset_x", "kind": "output"}) == typed
     # Rejection branches that protect constraint cells.
-    assert _coerce_to_assetref({"id": "asset_x", "kind": "bogus"}) is None
-    assert _coerce_to_assetref({"score": 0.5, "data": {}}) is None
-    assert _coerce_to_assetref({"id": 42, "kind": "output"}) is None
-    assert _coerce_to_assetref(None) is None
+    assert coerce_assetref({"id": "asset_x", "kind": "bogus"}) is None
+    assert coerce_assetref({"score": 0.5, "data": {}}) is None
+    assert coerce_assetref({"id": 42, "kind": "output"}) is None
+    assert coerce_assetref(None) is None
 
 
 def test_resolve_filename_collision_adds_sha_suffix() -> None:
