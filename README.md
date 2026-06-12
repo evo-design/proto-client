@@ -149,7 +149,7 @@ Add it to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc
 }
 ```
 
-The server exposes tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`) and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
+The server exposes `whoami` (workspace, scopes, and credits for the calling key), tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`), and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
 
 A `proto-client-mcp` CLI script is installed alongside:
 

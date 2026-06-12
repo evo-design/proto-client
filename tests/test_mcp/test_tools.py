@@ -35,6 +35,7 @@ from proto_client.mcp.tools import (
 from proto_client.models import (
     ConstraintSpec,
     GeneratorSpec,
+    MeResponse,
     OptimizerSpec,
     ToolExample,
     ToolInfo,
@@ -399,6 +400,7 @@ async def test_register_tools_attaches_full_surface():
     register_tools(fresh_mcp)
     registered = {t.name for t in await fresh_mcp.list_tools()}
     assert registered == {
+        "whoami",
         "list_tools",
         "search_tools",
         "get_tool_schema",
@@ -462,6 +464,27 @@ async def test_registered_get_tool_example_calls_get_example():
 
     assert result == {"x": 1}
     fake_client.tools.get_example.assert_awaited_once_with("esmfold-prediction")
+
+
+async def test_registered_whoami_calls_me():
+    """The whoami wrapper routes through client.me()."""
+    fake_client = AsyncMock()
+    fake_client.me.return_value = MeResponse(
+        workspace_id="w1", workspace_name="Lab", key_id="k1", scopes=["full"], tier="expanded"
+    )
+
+    @asynccontextmanager
+    async def fake_get_client(_ctx):
+        yield fake_client
+
+    fresh_mcp = FastMCP("test-server")
+    register_tools(fresh_mcp)
+    handler = next(t for t in await fresh_mcp.list_tools() if t.name == "whoami")
+
+    with patch("proto_client.mcp.tools._get_client", fake_get_client):
+        await handler.fn(ctx=MagicMock())
+
+    fake_client.me.assert_awaited_once()
 
 
 # --- New prompt impls ---
