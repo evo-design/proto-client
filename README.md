@@ -69,7 +69,7 @@ client = ProtoClient(
 # or: PROTO_TOOLS_BASE_URL / PROTO_RUNS_BASE_URL in the environment
 ```
 
-A non-default URL must use `https://` (so the API key is never sent in plaintext); `localhost` / `127.0.0.1` may use `http://` for local development.
+A non-default URL must use `https://`; `localhost` / `127.0.0.1` may use `http://` for local development.
 
 ## Working with output assets
 

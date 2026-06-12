@@ -15,19 +15,16 @@ TOOLS_BASE_URL = "https://proto-tools.evodesign.org"
 
 RUNS_BASE_URL = "https://proto-language.evodesign.org"
 
-# Loopback hosts never leave the machine, so http is safe there; every other
-# non-default host must use https so the API key is never sent in plaintext.
+# Loopback hosts may use http; every other non-default host must use https.
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def resolve_base_url(explicit: str | None, *, env_var: str, default: str) -> str:
     """Resolve a service base URL via ``explicit arg → env var → packaged default``.
 
-    A non-default URL must use ``https://`` so the API key is never sent over
-    plaintext, except loopback hosts (``localhost`` / ``127.0.0.1`` / ``::1``),
-    which stay on the machine and may use ``http://`` for local development.
-    Logs at INFO whenever a non-default URL is in effect, so a misconfigured
-    override surfaces instead of silently redirecting traffic.
+    A non-default URL must use ``https://``, except loopback hosts
+    (``localhost`` / ``127.0.0.1`` / ``::1``), which may use ``http://`` for
+    local development. A non-default URL is logged at INFO.
 
     Args:
         explicit: Base URL passed directly to the client, or ``None``.

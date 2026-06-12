@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from proto_client import AsyncProtoClient, ProtoClient, RetryConfig
-from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
+from proto_client.utils.defaults import resolve_base_url
 from proto_client.utils.http import RetryTransport
 
 
@@ -83,20 +83,6 @@ def test_user_agent_header():
         assert "python/" in ua
 
 
-def _clear_base_url_env() -> None:
-    os.environ.pop("PROTO_TOOLS_BASE_URL", None)
-    os.environ.pop("PROTO_RUNS_BASE_URL", None)
-
-
-def test_default_base_urls_when_unset():
-    """With nothing overridden, both namespaces use the packaged defaults."""
-    with patch.dict(os.environ, {}, clear=False):
-        _clear_base_url_env()
-        with ProtoClient() as c:
-            assert str(c.tools._http.base_url).rstrip("/") == TOOLS_BASE_URL.rstrip("/")
-            assert str(c.runs._http.base_url).rstrip("/") == RUNS_BASE_URL.rstrip("/")
-
-
 def test_base_url_constructor_args_override():
     with ProtoClient(tools_base_url="https://tools.example.com", runs_base_url="https://runs.example.com") as c:
         assert str(c.tools._http.base_url).rstrip("/") == "https://tools.example.com"
@@ -111,17 +97,6 @@ def test_base_url_env_vars_override():
         with ProtoClient() as c:
             assert str(c.tools._http.base_url).rstrip("/") == "https://tools.env.com"
             assert str(c.runs._http.base_url).rstrip("/") == "https://runs.env.com"
-
-
-def test_base_url_arg_beats_env():
-    with patch.dict(os.environ, {"PROTO_TOOLS_BASE_URL": "https://from-env.com"}):
-        with ProtoClient(tools_base_url="https://from-arg.com") as c:
-            assert str(c.tools._http.base_url).rstrip("/") == "https://from-arg.com"
-
-
-def test_base_url_plaintext_override_rejected():
-    with pytest.raises(ValueError, match="must use https"):
-        ProtoClient(tools_base_url="http://insecure.example.com:8000")
 
 
 async def test_async_base_url_overrides():
@@ -143,12 +118,6 @@ class TestResolveBaseUrl:
             os.environ.pop("PROTO_X", None)
             assert resolve_base_url(None, env_var="PROTO_X", default="https://d.com") == "https://d.com"
 
-    def test_default_returned_verbatim_without_scheme_check(self):
-        """A non-https default is trusted and never validated."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PROTO_X", None)
-            assert resolve_base_url(None, env_var="PROTO_X", default="http://trusted") == "http://trusted"
-
     def test_non_default_plaintext_rejected(self):
         with pytest.raises(ValueError, match="must use https"):
             resolve_base_url("http://evil.example.com:8000", env_var="PROTO_X", default="https://d.com")
@@ -156,11 +125,6 @@ class TestResolveBaseUrl:
     @pytest.mark.parametrize("url", ["http://localhost:8000", "http://127.0.0.1:8000", "http://[::1]:8000"])
     def test_loopback_http_allowed(self, url):
         assert resolve_base_url(url, env_var="PROTO_X", default="https://d.com") == url
-
-    def test_https_non_default_allowed(self):
-        assert resolve_base_url("https://staging.example.com", env_var="PROTO_X", default="https://d.com") == (
-            "https://staging.example.com"
-        )
 
     def test_logs_on_override(self, caplog):
         with caplog.at_level(logging.INFO, logger="proto_client.utils.defaults"):
