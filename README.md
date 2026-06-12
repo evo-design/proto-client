@@ -109,6 +109,24 @@ client.runs.export(run.id, "out.zip")
 
 For a single asset rather than the whole bundle, use `client.assets.download(ref, path)`.
 
+## Command line
+
+A minimal `proto-client` CLI ships for submitting jobs from a shell or CI. Set `PROTO_API_KEY`, then:
+
+```bash
+# Scaffold a tool's inputs, then submit, wait, write the result, and download assets
+proto-client tools example esmfold-prediction > in.json
+proto-client tools run esmfold-prediction --inputs in.json -o result.json --assets ./out
+
+# Submit an optimization run and export its results
+proto-client runs submit program.json --wait --export out.zip
+
+# Check the calling key's workspace and credits
+proto-client me
+```
+
+Results are emitted as JSON (stdout or `-o FILE`); binary outputs download to `--assets DIR`. `proto-client mcp` launches the MCP server (below). Run `proto-client --help` for the full command tree.
+
 ## Using with AI agents (MCP)
 
 Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
