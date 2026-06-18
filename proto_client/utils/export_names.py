@@ -26,7 +26,6 @@ def sanitize_field(raw: str | None) -> str:
 def build_export_name(
     *,
     project: str | None = None,
-    run_name: str | None = None,
     timestamp: str | datetime | None = None,
     discriminator: str | None = None,
     ext: str | None = None,
@@ -38,7 +37,7 @@ def build_export_name(
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     else:
         ts = timestamp
-    parts = [sanitize_field(project), sanitize_field(run_name), sanitize_field(ts)]
+    parts = [sanitize_field(project), sanitize_field(ts)]
     base = "__".join(p for p in parts if p) or "export"
     if discriminator:
         base += sanitize_field(discriminator)

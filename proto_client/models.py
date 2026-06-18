@@ -1,8 +1,8 @@
 """Response models for the Proto Bio SDK.
 
-Thin wire-shape mirrors of ``the tools API`` / ``the runs API``.
-:class:`AssetRef` is a pure data model carrying only ``_repr_html_`` (a Jupyter
-card); fetching an asset's bytes goes through the ``client.assets`` namespace
+Thin wire-shape mirrors of the API responses. :class:`AssetRef` carries display
+and path helpers (``_repr_html_``, ``suggested_filename``) but no byte-fetching;
+fetching an asset's bytes goes through the ``client.assets`` namespace
 (``get`` / ``decode`` / ``download``), not the ref itself.
 
 Tool-specific input/output dicts stay ``dict[str, Any]``; pass ``output_model``
@@ -214,10 +214,9 @@ class JobStatusResponse(BaseModel):
 class BatchItemSuccess(BaseModel):
     """A single succeeded item from a batch run.
 
-    ``output`` is ``dict[str, Any]`` by default. When ``output_model`` is
-    passed to :meth:`~proto_client.tools.ToolsNamespace.run_batch`, it
-    becomes an instance of that model at runtime (same swap pattern as
-    :attr:`JobStatusResponse.result`).
+    The wire field ``output`` is ``Any``. When ``output_model`` is passed to
+    :meth:`~proto_client.tools.ToolsNamespace.run_batch`, it becomes an instance
+    of that model at runtime (same swap pattern as :attr:`JobStatusResponse.result`).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -416,33 +415,22 @@ class ValidationResponse(BaseModel):
 
 
 class MeResponse(BaseModel):
-    """Self-describing principal payload from ``GET /api/v1/me``.
-
-    Lets a client introspect its workspace + scopes without a second
-    round-trip; read once at boot rather than caching a hand-rolled mirror.
-    Mirrors the runs API's ``MeResponse``.
-
-    Attributes:
-        workspace_id (str): The caller's workspace UUID.
-        workspace_name (str): Human-readable workspace name.
-        key_id (str): The resolving API key's id.
-        scopes (list[str]): Granted scopes — ``full`` (read + dispatch) or ``read_only``.
-        member_user_id (str | None): The member user id for proxy/browser callers; ``None`` for raw API keys.
-        tier (str): ``preview`` (examples-only, no authoring) or ``expanded`` (can author).
-        credit_cap (float | None): Credit ceiling, or ``None`` when uncapped.
-        remaining_credits (float | None): Remaining credits (cap minus spend), floored at 0, or ``None`` when uncapped.
-    """
+    """Self-describing principal from ``GET /api/v1/me`` — workspace, scopes, tier, and credits."""
 
     model_config = ConfigDict(frozen=True)
 
     workspace_id: str
     workspace_name: str
     key_id: str
-    scopes: list[str]
-    member_user_id: str | None = None
-    tier: str
-    credit_cap: float | None = None
-    remaining_credits: float | None = None
+    scopes: list[str] = Field(description="Granted scopes, e.g. 'full' (read + dispatch) or 'read_only'.")
+    member_user_id: str | None = Field(
+        default=None, description="Member user id for proxy callers; None for raw API keys."
+    )
+    tier: str = Field(description="Capability tier, e.g. 'preview' (examples only) or 'expanded' (can author).")
+    credit_cap: float | None = Field(default=None, description="Credit ceiling, or None when uncapped.")
+    remaining_credits: float | None = Field(
+        default=None, description="Remaining credits (floored at 0), or None when uncapped."
+    )
 
 
 class CancelDetails(BaseModel):

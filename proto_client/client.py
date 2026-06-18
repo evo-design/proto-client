@@ -97,8 +97,7 @@ class ProtoClient:
         """Return the calling key's principal info from ``GET /api/v1/me``.
 
         Source of truth for capability strings; intended to be called once
-        at agent / client boot. Raises the same typed errors as every other
-        endpoint (``ProtoAuthError`` on 401/403, etc.).
+        at agent / client boot.
         """
         resp = self._runs_http.get("/api/v1/me")
         if resp.is_error:
@@ -115,22 +114,20 @@ class ProtoClient:
     ) -> Path:
         """Export a proto-language ``Program`` to *path*, downloading AssetRef-referenced bytes.
 
-        ``path=None`` names the folder per the unified convention
-        (``{project}__{YYYY-MM-DD_HHMMSS}``) under CWD.
+        ``path=None`` names the folder ``{project}__{YYYY-MM-DD_HHMMSS}`` under CWD.
 
         Writes::
 
             <path>/
             ├── sequences.<format>    constraints.<format>    constructs.<format>    optimization.<format>
             ├── sequences.fasta
-            └── assets/                file names use res<result_idx>_con<construct_idx>_seg<segment_idx>:
-                ├── res{i}_con{c}_seg{s}_structure.{pdb|cif}    written from Sequence.structure
-                ├── res{i}_con{c}_seg{s}_logits.npy             written from Sequence.logits via np.save
-                └── <asset_id>.<ext>                       downloaded AssetRefs
+            └── assets/
+                ├── <...>_structure.{pdb|cif}    written from Sequence.structure
+                ├── <...>_logits.npy             written from Sequence.logits
+                └── <asset_id>.<ext>             downloaded AssetRefs
 
-        AssetRef cells anywhere in constraint / generator / metadata are downloaded
-        to ``assets/`` and rewritten to ``"assets/<file>"`` strings before
-        proto-language writes the tables.
+        AssetRef cells anywhere in the results are downloaded into ``assets/`` and
+        rewritten to ``"assets/<file>"`` strings before the tables are written.
         """
         try:
             from proto_language.utils.io import (  # type: ignore[import-not-found, unused-ignore]

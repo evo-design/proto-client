@@ -10,9 +10,7 @@ import httpx
 
 from proto_client.models import AssetRef
 
-# Accept the typed model or the raw dict pulled out of ``job.result`` /
-# ``run.stage_results[...]`` — both carry the canonical ``url`` field
-# stamped by the backend.
+# Accept the typed AssetRef or its raw-dict form; both carry the ``url`` field.
 AssetLike = AssetRef | dict[str, Any]
 SENSITIVE_REDIRECT_HEADERS = ("authorization", "proxy-authorization", "x-api-key", "x-app-user-id", "cookie")
 
@@ -23,8 +21,8 @@ def asset_url(ref_or_dict: AssetLike) -> str:
         ref_or_dict = AssetRef.model_validate(ref_or_dict)
     if not ref_or_dict.url:
         raise ValueError(
-            f"AssetRef {ref_or_dict.id!r} has no `url` — backend did not stamp a fetch URL "
-            "(legacy server, or this is a `reference_db` / user-upload-allocation ref)."
+            f"AssetRef {ref_or_dict.id!r} has no fetch URL; this kind of ref is not fetchable "
+            "through the assets namespace."
         )
     return ref_or_dict.url
 

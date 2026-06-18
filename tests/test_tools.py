@@ -50,15 +50,11 @@ def test_list_returns_tool_info(mock_http):
 
 
 def test_list_accepts_inline_and_unhosted_tools_with_null_service(mock_http):
-    """Inline + unhosted tools serve ``service``/``method`` as ``null`` — list() must not raise.
-
-    Regression: ``ToolInfo`` previously typed ``service``/``method`` as required ``str``, so a
-    single inline tool (the live catalog serves dozens) crashed the entire ``tools.list()``.
-    """
+    """Inline + unhosted tools serve ``service``/``method`` as ``null`` — list() must not raise."""
     mock_http.get.return_value = mock_response(
         [
             {
-                "key": "pdb-fetch-entry",  # inline tool: runs in the gateway, no separate service
+                "key": "pdb-fetch-entry",  # inline tool: null service/method
                 "service": None,
                 "method": None,
                 "label": "PDB Fetch Entry",
@@ -270,7 +266,7 @@ def test_run_auto_generates_idempotency_key(mock_http):
     mock_http.get.return_value = mock_response(job_payload("completed", completed=True))
     ToolsNamespace(mock_http).run("blast", {"x": 1}, poll_interval=0.01)
     key = mock_http.post.call_args.kwargs["headers"]["Idempotency-Key"]
-    assert len(key) == 32  # auto-generated uuid4().hex makes the submit POST retry-safe
+    assert len(key) == 32
 
 
 def test_run_preserves_explicit_idempotency_key(mock_http):
@@ -310,7 +306,7 @@ def test_run_batch_polls_until_complete(mock_http: MagicMock) -> None:
     assert mock_http.get.call_count == 2
 
 
-# -- Idempotency key --
+# ── Idempotency key ──
 
 
 def test_submit_sends_idempotency_header(mock_http):
@@ -343,11 +339,13 @@ def test_submit_idempotency_409_raises_conflict(mock_http):
         409,
     )
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(ProtoConflictError, match="different inputs"):
+    with pytest.raises(ProtoConflictError) as exc_info:
         ns.submit("blast", {"query": "MKTL"}, idempotency_key="k1")
+    assert exc_info.value.status_code == 409
+    assert "different inputs" in exc_info.value.message
 
 
-# -- Batch result --
+# ── Batch result ──
 
 
 def _batch_result_payload(items: list[dict[str, Any]]) -> dict:

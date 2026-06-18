@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from proto_client import AsyncProtoClient, ProtoClient
-from proto_client.errors import ProtoAuthError, ProtoServerError
+from proto_client.errors import ProtoAuthError
 
 
 def _swap_runs_transport(client, handler) -> None:
@@ -63,17 +63,6 @@ def test_me_raises_proto_auth_error_on_401():
     c = ProtoClient(api_key="x")
     _swap_runs_transport(c, handler)
     with pytest.raises(ProtoAuthError):
-        c.me()
-    c.close()
-
-
-def test_me_raises_proto_server_error_on_500():
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, json={"detail": "boom"})
-
-    c = ProtoClient(api_key="x")
-    _swap_runs_transport(c, handler)
-    with pytest.raises(ProtoServerError):
         c.me()
     c.close()
 

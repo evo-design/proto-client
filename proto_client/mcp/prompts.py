@@ -52,7 +52,7 @@ async def design_program_impl(client: AsyncProtoClient, goal: str, sequence_type
     """Build the design-program prompt with the live component catalog."""
     component_summary = await _build_component_summary(client)
 
-    # MCP's Message only supports user/assistant; the first acts as a preamble.
+    # MCP Message only supports user/assistant roles.
     preamble_content = f"""\
 You are an expert biological programmer designing an optimization program.
 
@@ -88,7 +88,7 @@ Proto Language is a constraint-based optimization framework for biological seque
 # DESIGN WORKFLOW
 
 1. **Decompose** the goal into constructs and segments.
-2. **Choose optimizer**: rejection-sampling (exploration), mcmc (refinement), beam-search (autoregressive).
+2. **Choose an optimizer** from the Optimizers list above, matching your strategy (e.g. exploration vs refinement).
 3. **Select generators** matching the sequence type and strategy.
 4. **Layer constraints**: filters first (with threshold), then scoring constraints (with weights).
 5. **Use list_components** (or the bio:// resources) to verify component keys, parameters, and config schemas.
@@ -109,11 +109,21 @@ Proto Language is a constraint-based optimization framework for biological seque
     ]
 
 
+def _pascal(name: str) -> str:
+    """Kebab/space name to PascalCase, e.g. 'gc-content' -> 'GcContent'."""
+    return name.replace("-", " ").title().replace(" ", "")
+
+
+def _label(name: str) -> str:
+    """Kebab/space name to a Title Case label, e.g. 'gc-content' -> 'Gc Content'."""
+    return name.replace("-", " ").title()
+
+
 def implement_constraint_impl(name: str, description: str, sequence_type: str = "dna") -> list[Message]:
     """Code template for a custom constraint."""
-    config_class = name.replace("-", " ").title().replace(" ", "") + "Config"
+    config_class = _pascal(name) + "Config"
     func_name = name.replace("-", "_")
-    label = name.replace("-", " ").title()
+    label = _label(name)
 
     template = f"""\
 Implement a custom constraint for the proto-language framework.
@@ -239,9 +249,9 @@ _CATEGORY_TO_INPUT_TYPE: dict[str, str] = {
 
 def implement_generator_impl(name: str, description: str, category: str = "mutation") -> list[Message]:
     """Code template for a custom generator class."""
-    config_class = name.replace("-", " ").title().replace(" ", "") + "Config"
-    class_name = name.replace("-", " ").title().replace(" ", "") + "Generator"
-    label = name.replace("-", " ").title()
+    config_class = _pascal(name) + "Config"
+    class_name = _pascal(name) + "Generator"
+    label = _label(name)
     input_type_member = _CATEGORY_TO_INPUT_TYPE.get(category, "STARTING_SEQUENCE")
 
     template = f"""\

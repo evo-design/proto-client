@@ -258,7 +258,7 @@ async def run_tool_impl(
 
 _INLINE_MIME_EXACT = frozenset({"application/json", "application/json+gzip"})
 _INLINE_MIME_PREFIXES = ("text/", "chemical/")
-_MAX_INLINE_BYTES = 32 * 1024  # keep an inlined asset small enough not to blow agent context; larger stay refs
+_MAX_INLINE_BYTES = 32 * 1024  # max decoded size to inline; larger assets stay refs
 
 
 def _is_asset_ref(value: Any) -> bool:
@@ -272,12 +272,7 @@ def _is_decodable(mime: str) -> bool:
 
 
 def _decoded_byte_len(decoded: Any) -> int:
-    """Bytes a decoded asset adds to the agent context once inlined.
-
-    ``str``/``bytes`` measure directly; a JSON value is measured by its serialized
-    form (what actually reaches the agent). Lets callers cap on the *decoded* size,
-    so a small ``application/json+gzip`` ref that expands to megabytes is not inlined.
-    """
+    """Serialized byte length a decoded asset adds to the agent context (str/bytes measured directly)."""
     if isinstance(decoded, str):
         return len(decoded.encode("utf-8"))
     if isinstance(decoded, bytes):
@@ -315,16 +310,12 @@ async def fetch_asset_impl(client: AsyncProtoClient, ref: dict[str, Any], max_by
     """Fetch and decode an output asset referenced in a tool/run result.
 
     Returns the decoded value (a JSON object, or text for chemical/text assets), or a
-    ``{"fetched": False, ...}`` descriptor when *ref* is not a fetchable asset, exceeds
-    *max_bytes*, decodes to raw bytes (binary), or can't be fetched/decoded.
+    ``{"fetched": False, ...}`` descriptor when *ref* is not fetchable, exceeds *max_bytes*,
+    decodes to raw bytes, or can't be fetched/decoded. ``max_bytes`` caps the decoded
+    payload returned to the agent, not the download.
 
-    ``max_bytes`` bounds the *returned/decoded* size, not the download: ``decode``
-    loads the full asset into memory before this guard applies, so it caps what the
-    agent receives, not what the server materializes.
-
-    *ref* (including its ``url``) is agent-supplied; ``assets`` constrains the fetch to
-    a configured Proto origin (``_client_for``), so this is an authenticated GET against
-    the Proto API — never an arbitrary external host.
+    The agent-supplied *ref* is fetched only against a configured Proto origin (an
+    authenticated GET), never an arbitrary external host.
     """
     if not _is_asset_ref(ref):
         return {"fetched": False, "reason": "not a fetchable AssetRef (need id, kind, and url)"}
@@ -339,7 +330,7 @@ async def fetch_asset_impl(client: AsyncProtoClient, ref: dict[str, Any], max_by
         }
     try:
         content = await client.assets.decode(ref)
-    except Exception as exc:  # broad on purpose: mirror _inline_assets — return a descriptor, not a raw error
+    except Exception as exc:  # broad on purpose: return a descriptor instead of a raw error
         logger.warning("fetch_asset could not fetch/decode %s: %s", ref.get("id"), exc)
         return {
             "fetched": False,

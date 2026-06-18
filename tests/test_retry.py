@@ -244,7 +244,7 @@ def test_post_without_idempotency_key_not_retried_on_network_error() -> None:
 
 
 def test_post_with_idempotency_key_is_retried() -> None:
-    # An Idempotency-Key opts the POST into safe retries (the backend dedupes on it).
+    # An Idempotency-Key opts the POST into safe retries.
     transport, counter, _ = _sync_transport([_resp(503), _resp(200)], initial_delay=0.01)
     assert _post(transport, headers={"Idempotency-Key": "k1"}).status_code == 200
     assert counter.n == 2

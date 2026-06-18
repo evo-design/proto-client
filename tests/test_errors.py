@@ -70,7 +70,7 @@ def test_request_id_none_when_missing() -> None:
     assert err.request_id is None
 
 
-def test_fastapi_validation_detail_extracted() -> None:
+def test_validation_detail_extracted() -> None:
     body = {
         "detail": [
             {
@@ -184,7 +184,7 @@ def test_from_response_on_2xx_returns_base_error() -> None:
 
 
 def test_retry_after_naive_datetime() -> None:
-    """HTTP-date without tzinfo is treated as UTC (line 141)."""
+    """HTTP-date without tzinfo is treated as UTC."""
     # Build a date string that parsedate_to_datetime returns as naive.
     # Standard HTTP dates are always timezone-aware via email.utils, so we
     # test parse_retry_after directly with a mock.
@@ -202,7 +202,7 @@ def test_retry_after_naive_datetime() -> None:
 
 
 def test_extract_message_validation_error_non_dict_items() -> None:
-    """Detail is a list but items are not dicts -> 'Validation error' fallback (line 167)."""
+    """Detail is a list but items are not dicts -> 'Validation error' fallback."""
     body = {"detail": ["error1", "error2"]}
     err = from_response(_response(422, body))
     assert isinstance(err, ProtoValidationError)
@@ -210,7 +210,7 @@ def test_extract_message_validation_error_non_dict_items() -> None:
 
 
 def test_extract_message_body_message_field() -> None:
-    """Body has 'message' key instead of 'detail' (line 170)."""
+    """Body has 'message' key instead of 'detail'."""
     body = {"message": "Something went wrong"}
     err = from_response(_response(500, body))
     assert err.message == "Something went wrong"

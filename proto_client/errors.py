@@ -61,7 +61,7 @@ class ProtoConflictError(ProtoAPIError):
 class ProtoValidationError(ProtoAPIError):
     """422 — request failed server-side validation.
 
-    ``errors`` mirrors FastAPI's ``detail`` list — each entry has
+    ``errors`` is the server's structured validation list — each entry has
     ``loc``, ``msg``, ``type`` keys.
     """
 
@@ -153,8 +153,7 @@ def _extract_body(response: httpx.Response) -> Any:
 
 
 def _extract_message(body: Any, status_code: int) -> str:
-    # FastAPI: {"detail": "..."} for string HTTPException, or
-    # {"detail": [{loc, msg, type}, ...]} for RequestValidationError.
+    # detail is either a string message or a list of {loc, msg, type} validation entries.
     if isinstance(body, dict):
         detail = body.get("detail")
         if isinstance(detail, str) and detail:

@@ -1,10 +1,10 @@
 """Tests for the sync ``RunsNamespace``.
 
-Covers all methods and branches in ``proto_client/runs.py``, including
-error paths, the ``run()`` polling convenience, and the ``_check_terminal``
-helper.
+Covers the namespace methods, error paths, the ``run()`` polling convenience,
+the ``_check_terminal`` helper, and log streaming/paging.
 """
 
+import json
 from typing import Any
 
 import httpx
@@ -28,6 +28,7 @@ from proto_client.models import (
     StageMetrics,
     ValidationResponse,
 )
+from proto_client.runs import RunsNamespace
 
 
 def _timepoint_json(stage: int = 0, timepoint: int = 0) -> dict[str, Any]:
@@ -472,8 +473,6 @@ def test_sync_get_timepoint():
 
 
 def test_sync_iter_timepoints_streams_ndjson():
-    import json
-
     captured: dict[str, Any] = {}
     payload = b"\n".join(json.dumps(_timepoint_json(timepoint=i)).encode() for i in range(3))
 
@@ -600,34 +599,19 @@ def test_sync_list_optimizers_error():
 
 
 def test_check_terminal_cancelled():
-    from proto_client.runs import RunsNamespace
-
     resp = RunResponse.model_validate(run_response_json("r1", "cancelled"))
     with pytest.raises(RunCancelledError):
         RunsNamespace._check_terminal("r1", resp)
 
 
 def test_check_terminal_unexpected_status():
-    """A terminal status that isn't completed/cancelled/failed should raise AssertionError.
-
-    This is a defensive assertion that should be unreachable in production --
-    every real terminal status is handled by an explicit branch.  We test it
-    to ensure the safety net fires if a new terminal status is ever added to
-    the enum without a corresponding handler.
-    """
-    from proto_client.runs import RunsNamespace
-
-    # Force a status that no branch handles.  'pending' is non-terminal in
-    # practice, but _check_terminal only sees it if the caller already decided
-    # the run is terminal, so it falls through to the assertion.
+    """A terminal status with no handler hits the defensive AssertionError."""
     resp = RunResponse.model_validate(run_response_json("r1", "pending"))
     with pytest.raises(AssertionError, match="Unexpected terminal status"):
         RunsNamespace._check_terminal("r1", resp)
 
 
 def test_check_terminal_failed():
-    from proto_client.runs import RunsNamespace
-
     resp = RunResponse.model_validate(run_response_json("r1", "failed", error_message="OOM"))
     with pytest.raises(RunFailedError) as exc_info:
         RunsNamespace._check_terminal("r1", resp)
@@ -679,8 +663,10 @@ def test_sync_run_times_out(monkeypatch):
 
     monkeypatch.setattr(runs_mod, "_sleep", lambda _s: None)
 
+    # 3 readings: deadline + two polls; the third trips the 1.0s deadline. No fallback,
+    # so an added monotonic() call raises StopIteration and fails the test loudly.
     times = iter([0.0, 0.0, 100.0])
-    monkeypatch.setattr(runs_mod.time, "monotonic", lambda: next(times, 100.0))
+    monkeypatch.setattr(runs_mod.time, "monotonic", lambda: next(times))
 
     def handler(request):
         if request.method == "POST":

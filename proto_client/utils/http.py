@@ -1,18 +1,10 @@
 """Retry-aware httpx transports (sync + async).
 
-Wrap an existing ``httpx.BaseTransport`` / ``httpx.AsyncBaseTransport`` so
-failed requests are retried with exponential backoff + jitter. Retriable:
-429, 500, 502, 503, 504, and connection/read-timeout errors. Non-retriable
-client errors (400, 401, 403, 404, 409, 422) fall through unchanged — the
-caller will map them to typed errors via ``proto_client.errors.from_response``.
-Only idempotent methods (GET/HEAD/OPTIONS/PUT/DELETE) retry unconditionally; a
-POST retries only when it carries an ``Idempotency-Key``, so a lost response can
-never duplicate a side effect (a second run or tool job).
-
-On 429/503, if the server emits a ``Retry-After`` header we honor it (capped
-at ``retry_after_max``) instead of computed backoff. Conservative defaults
-(``max_retries=2``) keep the SDK from amplifying 429 storms against the
-the tools API rate limiter.
+Wrap an ``httpx`` transport so retriable failures (429, 500, 502, 503, 504, and
+connection/timeout errors) are retried with exponential backoff + jitter. Client
+errors fall through unchanged for the caller to map via ``errors.from_response``.
+See :class:`RetryConfig` for tunables and :func:`_is_retriable_request` for which
+requests are eligible.
 """
 
 import asyncio
@@ -38,9 +30,7 @@ RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 
 # Methods safe to retry by RFC semantics. A POST is retried only when it carries an
-# Idempotency-Key, so a lost response can't create a duplicate run/job. the tools API
-# dedupes on the key; the runs API has no idempotency yet, so runs.create sends none
-# and is therefore never retried.
+# Idempotency-Key, so a lost response can't create a duplicate run/job.
 _IDEMPOTENT_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 
 
@@ -54,12 +44,8 @@ class RetryConfig:
     """Tunables for :class:`RetryTransport` / :class:`AsyncRetryTransport`.
 
     ``max_retries`` is the number of *additional* attempts after the first
-    — ``max_retries=2`` yields up to 3 total requests.
-
-    ``retry_after_max`` caps how long an honored server ``Retry-After`` header
-    can park a retry, so a hostile or buggy value can't wedge the client for
-    hours. It bounds the *server hint* only; ``max_delay`` still bounds our own
-    computed backoff.
+    (``max_retries=2`` yields up to 3 total requests). ``retry_after_max`` caps an
+    honored server ``Retry-After``; ``max_delay`` caps the base backoff before jitter.
     """
 
     max_retries: int = 2
@@ -118,13 +104,7 @@ def _delay_for_response(
 
 
 class RetryTransport(httpx.BaseTransport):
-    """Sync retry wrapper. Delegates transport to ``wrapped``.
-
-    Request headers pass through unmutated. The transport reads the method and
-    ``Idempotency-Key`` to decide whether a failed request is safe to retry (see
-    :func:`_is_retriable_request`); ``x-app-user-id`` and other headers are
-    forwarded untouched.
-    """
+    """Sync retry wrapper around ``wrapped``; see :func:`_is_retriable_request` for retry-eligibility."""
 
     def __init__(
         self,

@@ -48,12 +48,7 @@ class AssetsNamespace:
         return decode_asset_bytes(ref, self.get(ref))
 
     def download(self, ref: AssetLike, path: str | Path) -> Path:
-        """Stream exact stored asset bytes to ``path`` atomically.
-
-        Writes to a sibling temp file and ``os.replace``s it into place on
-        success, so a mid-stream failure never leaves a truncated file at
-        ``path`` for a later run to mistake as complete.
-        """
+        """Stream stored asset bytes to ``path`` atomically (temp file + ``os.replace``)."""
         destination = Path(path)
         tmp = destination.with_name(f"{destination.name}.tmp.{uuid4().hex}")
         try:
@@ -81,7 +76,7 @@ class AssetsNamespace:
                 return
             location = redirect_location(resp, url)
 
-        # Strip auth on every redirect (safe default — same-origin redirects don't exist today).
+        # Strip auth before following an asset redirect (storage origins differ from the API origin).
         request = client.build_request("GET", location)
         strip_sensitive_redirect_headers(request)
         redirected = client.send(request, stream=True, follow_redirects=True)

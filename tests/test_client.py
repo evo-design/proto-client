@@ -56,15 +56,18 @@ def test_client_closes_both_http_clients():
     assert runs_http.is_closed
 
 
-@pytest.mark.parametrize("max_retries,expected", [(2, 2), (0, 0)])
-def test_retry_config_propagation(max_retries, expected):
-    kwargs = {}
-    if max_retries != 2:
-        kwargs["max_retries"] = max_retries
-    with ProtoClient(**kwargs) as c:
+def test_default_max_retries_matches_config_default():
+    with ProtoClient() as c:
         transport = c.tools._http._transport
         assert isinstance(transport, RetryTransport)
-        assert transport._config.max_retries == expected
+        assert transport._config.max_retries == RetryConfig().max_retries
+
+
+def test_explicit_max_retries_propagates():
+    with ProtoClient(max_retries=0) as c:
+        transport = c.tools._http._transport
+        assert isinstance(transport, RetryTransport)
+        assert transport._config.max_retries == 0
 
 
 def test_explicit_retry_config():
@@ -132,45 +135,26 @@ class TestResolveBaseUrl:
         assert any("non-default base URL" in r.message for r in caplog.records)
 
 
-def test_close_reraises_first_error():
-    """When a client raises during close(), the first error is re-raised after all clients are closed."""
+def test_close_closes_all_clients_and_reraises_first_error():
+    """When clients raise during close(), every client is still closed and only the first error propagates."""
     c = ProtoClient()
+    assert len(c._clients) == 2
 
-    original_close = c._clients[0].close
-
-    def exploding_close():
-        original_close()
-        raise RuntimeError("close boom")
-
-    c._clients[0].close = exploding_close
-
-    with pytest.raises(RuntimeError, match="close boom"):
-        c.close()
-    assert c._clients == []
-
-
-def test_close_captures_first_error_only():
-    """When multiple clients raise during close(), only the first error propagates."""
-    c = ProtoClient()
-
-    original_close_0 = c._clients[0].close
-    original_close_1 = c._clients[1].close
     close_calls = [0, 0]
 
-    def exploding_close_0():
-        close_calls[0] += 1
-        original_close_0()
-        raise RuntimeError("first boom")
+    def exploding_close(index, original):
+        def _close():
+            close_calls[index] += 1
+            original()
+            raise RuntimeError("first boom" if index == 0 else "second boom")
 
-    def exploding_close_1():
-        close_calls[1] += 1
-        original_close_1()
-        raise RuntimeError("second boom")
+        return _close
 
-    c._clients[0].close = exploding_close_0
-    c._clients[1].close = exploding_close_1
+    c._clients[0].close = exploding_close(0, c._clients[0].close)
+    c._clients[1].close = exploding_close(1, c._clients[1].close)
 
     with pytest.raises(RuntimeError, match="first boom"):
         c.close()
 
     assert close_calls == [1, 1]
+    assert c._clients == []

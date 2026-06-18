@@ -249,7 +249,7 @@ async def test_list_components_gathers_all_three_registries(mock_client):
     assert [c.key for c in result.constraints] == ["gc-content"]
     assert [g.key for g in result.generators] == ["random-dna"]
     assert [o.key for o in result.optimizers] == ["mcmc"]
-    # Verify gather actually parallelized the three calls
+    # Each component list is fetched exactly once.
     mock_client.runs.list_constraints.assert_awaited_once()
     mock_client.runs.list_generators.assert_awaited_once()
     mock_client.runs.list_optimizers.assert_awaited_once()

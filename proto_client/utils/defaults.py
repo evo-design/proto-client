@@ -1,8 +1,8 @@
 """Built-in API endpoints and base-URL resolution.
 
 The packaged defaults point at Proto's hosted services. Each can be overridden
-per service for testing, via a constructor
-argument or environment variable; see :func:`resolve_base_url`.
+per service for testing or staging, via a constructor argument or environment
+variable; see :func:`resolve_base_url`.
 """
 
 import logging

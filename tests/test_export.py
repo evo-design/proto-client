@@ -152,7 +152,7 @@ class _FakeProgram:
         return copy.deepcopy(self._results)
 
 
-@pytest.mark.timeout(30)  # first call pays the ~9s proto-language import cost
+@pytest.mark.timeout(30)  # generous: first call pays the one-time proto-language import cost
 def test_export_program_writes_folder_layout(tmp_path: Path) -> None:
     """End-to-end: structures + logits + downloaded AssetRef + all 4 tables under *path*."""
 

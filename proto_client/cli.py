@@ -4,9 +4,6 @@ A thin shell over :class:`~proto_client.ProtoClient`: submit tool jobs and
 optimization runs, then write the result JSON and download any output assets.
 Discovery, typed validation, and human-readable formatting are intentionally
 left to proto-tools / the MCP server; this CLI deals in JSON and files.
-
-Command functions take an explicit ``client`` (mirroring the MCP
-``*_impl(client, ...)`` pattern) so they can be unit-tested with a mock.
 """
 
 import argparse
@@ -17,9 +14,9 @@ from typing import Any
 
 import httpx
 
-from proto_client import ProtoClient
+from proto_client import AssetRef, ProtoClient
 from proto_client.errors import ProtoAPIError
-from proto_client.utils.asset_helpers import coerce_assetref, walk_assetrefs
+from proto_client.utils.asset_helpers import walk_assetrefs
 
 
 def _read_json(path: str) -> Any:
@@ -39,16 +36,10 @@ def _emit_json(obj: Any, dest: str | None) -> None:
 
 
 def _download_assets(value: Any, client: ProtoClient, out_dir: Path, seen: dict[str, Path]) -> Any:
-    """Recursively download AssetRefs in *value* to *out_dir*, rewriting each to its local path.
-
-    Each unique asset id is fetched once; filename collisions across distinct
-    ids are disambiguated with the id stem.
-    """
+    """Recursively download AssetRefs in *value* to *out_dir*, rewriting each to its local path."""
 
     def _download(ref_value: Any) -> Any:
-        ref = coerce_assetref(ref_value)
-        if ref is None:  # pragma: no cover - walk_assetrefs only yields refs
-            return ref_value
+        ref = AssetRef.model_validate(ref_value)  # walk_assetrefs only yields refs
         if ref.id in seen:
             return str(seen[ref.id])
         dest = out_dir / ref.suggested_filename()

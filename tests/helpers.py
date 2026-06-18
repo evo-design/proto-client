@@ -27,7 +27,6 @@ def job_payload(
     status: str,
     *,
     job_id: str = "j1",
-    tool_key: str = "esmfold-prediction",
     result: dict | None = None,
     error: str | None = None,
     completed: bool = False,
@@ -35,7 +34,7 @@ def job_payload(
     """Build a job status response payload."""
     return {
         "job_id": job_id,
-        "tool_key": tool_key,
+        "tool_key": "esmfold-prediction",
         "status": status,
         "result": result,
         "error": error,

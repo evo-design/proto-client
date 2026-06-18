@@ -1,17 +1,8 @@
 """MCP resources — rendered views over registry/API metadata.
 
-These are not the human-authored docs site. Each
-handler fetches data via ``AsyncProtoClient`` and formats the live registry
-response so an MCP client can read it inline.
-
-Six URI templates:
-
-- ``bio://constraints/{key}`` — constraint spec + JSON Schema (markdown)
-- ``bio://generators/{key}`` — generator spec + JSON Schema (markdown)
-- ``bio://optimizers/{key}`` — optimizer spec + JSON Schema (markdown)
-- ``proto-tools://tools/{key}`` — tool metadata + schemas + example + citation (markdown)
-- ``proto-tools://schemas/{key}`` — input/config/output JSON Schemas (JSON)
-- ``proto-tools://citations/{key}`` — BibTeX citation (plain text)
+These are not the human-authored documentation site. Each handler fetches data
+via ``AsyncProtoClient`` and formats the live registry response so an MCP client
+can read it inline. See :func:`register_resources` for the URI templates.
 """
 
 import json

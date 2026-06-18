@@ -37,6 +37,24 @@ class AsyncProtoClient:
         tools_base_url: str | None = None,
         runs_base_url: str | None = None,
     ) -> None:
+        """Initialize the client.
+
+        Args:
+            api_key: API key for authentication. Falls back to ``PROTO_API_KEY`` env var.
+            timeout: Default request timeout in seconds.
+            max_retries: Number of retry attempts for failed requests. Ignored if
+                *retry_config* is provided.
+            retry_config: Advanced retry configuration. Overrides *max_retries*.
+            app_user_id: End-user identifier sent as ``x-app-user-id`` on every request.
+                Scopes server-side ownership and asset access checks to this identity.
+                Omit when the caller is acting at the platform/admin level.
+            tools_base_url: Override the the tools API base URL (for testing or staging).
+                Falls back to ``PROTO_TOOLS_BASE_URL`` then the packaged default.
+                A non-default URL must use https unless it is a loopback host.
+            runs_base_url: Override the the runs API base URL (for testing or staging).
+                Falls back to ``PROTO_RUNS_BASE_URL`` then the packaged default.
+                A non-default URL must use https unless it is a loopback host.
+        """
         resolved_key = api_key if api_key is not None else os.environ.get("PROTO_API_KEY")
         if resolved_key == "":
             raise ValueError("api_key must not be empty. Pass a valid key or set PROTO_API_KEY.")
@@ -78,8 +96,7 @@ class AsyncProtoClient:
         """Return the calling key's principal info from ``GET /api/v1/me``.
 
         Source of truth for capability strings; intended to be called once
-        at agent / client boot. Raises the same typed errors as every other
-        endpoint (``ProtoAuthError`` on 401/403, etc.).
+        at agent / client boot.
         """
         resp = await self._runs_http.get("/api/v1/me")
         if resp.is_error:
@@ -87,8 +104,7 @@ class AsyncProtoClient:
         return MeResponse.model_validate(resp.json())
 
     async def aclose(self) -> None:
-        # Close in parallel; return_exceptions ensures one failure doesn't
-        # leak the other client.
+        # Close all clients even if one fails.
         results = await asyncio.gather(*(c.aclose() for c in self._clients), return_exceptions=True)
         self._clients.clear()
         for r in results:

@@ -45,7 +45,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def _save_zip(destination: Path, content: bytes) -> None:
-    """Helper isolates the disk write so ruff's ASYNC230/240 stays quiet on the caller."""
+    """Write the export bytes to disk."""
     destination.write_bytes(content)
 
 
@@ -185,8 +185,7 @@ class AsyncRunsNamespace:
         """POST /api/v1/runs/{run_id}/stages/{stage_index}/start — run a single stage.
 
         Used for incremental execution (after ``create(..., execute=False)``)
-        and for re-running a failed stage — the latter is a common beta-user
-        recovery path.
+        or to re-run a failed stage.
         """
         return await self._request("POST", f"/api/v1/runs/{run_id}/stages/{stage_index}/start", model=RunResponse)
 
@@ -198,8 +197,8 @@ class AsyncRunsNamespace:
     ) -> ValidationResponse:
         """POST /api/v1/programs/validate — validate a program without creating a run.
 
-        Raises ``ProtoValidationError`` (422) when the program is invalid;
-        the response body carries a structured ``{"errors": [...]}`` detail.
+        Raises ``ProtoValidationError`` (422) when the program is invalid; its
+        ``.errors`` mirrors the server's structured validation detail.
         """
         return await self._request(
             "POST", "/api/v1/programs/validate", model=ValidationResponse, json={"program_data": program_data}
@@ -390,14 +389,11 @@ class AsyncRunsNamespace:
             webhook_metadata=webhook_metadata,
         )
         run_id = created.run_id
-        # Short-circuit if the server already resolved (e.g. instant validation
-        # failure) — avoids a redundant GET.
+        # If create() already reports terminal, confirm with one GET before skipping the poll loop.
         if created.status in _TERMINAL_STATUSES:
             full = await self.get(run_id)
             if full.status in _TERMINAL_STATUSES:
                 return self._check_terminal(run_id, full)
-            # create() said terminal but get() disagrees (eventual consistency)
-            # — fall through to poll loop.
         deadline = time.monotonic() + timeout
         while True:
             status = await self.get(run_id)

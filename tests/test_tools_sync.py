@@ -1,8 +1,8 @@
 """Streaming-log tests for the tools namespace; non-streaming tools tests live in ``test_tools.py``.
 
-Cursor semantics are exercised against the shared ``_collect_logs_page`` helper from
-``test_runs_sync.py``; tests here only verify URL/param wiring + the ``get_job_logs``
-wrapper actually returns a populated :class:`LogsPage` and surfaces ``end_reason``.
+Cursor / ``next_since`` semantics are covered in ``test_runs_sync.py`` (the same ``_ndjson``
+helpers back both namespaces); tests here verify URL/param wiring and the level/stream filter
+round-trip across the hand-written sync and async tools paths.
 """
 
 from typing import Any
@@ -61,48 +61,48 @@ def test_logrecord_update_status_defaults_false_and_parses_true():
 # ── iter_job_logs / get_job_logs — level + stream filters ─────────────
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "expected_levels", "expected_streams"),
-    [
-        ({"level": ["warning", "error"]}, ["warning", "error"], []),
-        ({"stream": ["stdout", "stderr"]}, [], ["stdout", "stderr"]),
-        (
-            {"since": 42, "follow": True, "limit": 200, "level": ["warning", "error"], "stream": ["stderr"]},
-            ["warning", "error"],
-            ["stderr"],
-        ),
-        ({}, [], []),
-    ],
-    ids=["level-only", "stream-only", "combined-with-passthrough", "omits-when-unset"],
-)
-def test_sync_iter_job_logs_filter_round_trip(
-    kwargs: dict[str, Any], expected_levels: list[str], expected_streams: list[str]
-):
-    captured: dict[str, Any] = {}
+_FILTER_CASES = [
+    ({"level": ["warning", "error"]}, ["warning", "error"], []),
+    ({"stream": ["stdout", "stderr"]}, [], ["stdout", "stderr"]),
+    (
+        {"since": 42, "follow": True, "limit": 200, "level": ["warning", "error"], "stream": ["stderr"]},
+        ["warning", "error"],
+        ["stderr"],
+    ),
+    ({}, [], []),
+]
+_FILTER_IDS = ["level-only", "stream-only", "combined-with-passthrough", "omits-when-unset"]
 
+
+def _capturing_handler(captured: dict[str, Any]):
     def handler(request: httpx.Request) -> httpx.Response:
         captured["items"] = request.url.params.multi_items()
         return ndjson_response(logs_payload(log_line(1)))
 
-    list(make_sync_tools_ns(handler).iter_job_logs("esmfold", "j1", **kwargs))
-    items = captured["items"]
+    return handler
+
+
+def _assert_filter_items(items, kwargs, expected_levels, expected_streams):
     assert [v for k, v in items if k == "level"] == expected_levels
     assert [v for k, v in items if k == "stream"] == expected_streams
-    if "since" in kwargs:
-        assert ("since", str(kwargs["since"])) in items
+    for key in ("since", "limit"):
+        if key in kwargs:
+            assert (key, str(kwargs[key])) in items
     if "follow" in kwargs:
         assert ("follow", str(kwargs["follow"]).lower()) in items
-    if "limit" in kwargs:
-        assert ("limit", str(kwargs["limit"])) in items
 
 
-async def test_async_iter_job_logs_multi_valued_filters_round_trip():
-    """Tools.py is hand-written on both sync and async sides; verify the async path independently."""
+@pytest.mark.parametrize(("kwargs", "expected_levels", "expected_streams"), _FILTER_CASES, ids=_FILTER_IDS)
+def test_sync_iter_job_logs_filter_round_trip(kwargs, expected_levels, expected_streams):
     captured: dict[str, Any] = {}
+    list(make_sync_tools_ns(_capturing_handler(captured)).iter_job_logs("esmfold", "j1", **kwargs))
+    _assert_filter_items(captured["items"], kwargs, expected_levels, expected_streams)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured["items"] = request.url.params.multi_items()
-        return ndjson_response(logs_payload(log_line(1)))
 
-    [r async for r in make_async_tools_ns(handler).iter_job_logs("esmfold", "j1", level=["warning", "error"])]
-    assert [v for k, v in captured["items"] if k == "level"] == ["warning", "error"]
+@pytest.mark.parametrize(("kwargs", "expected_levels", "expected_streams"), _FILTER_CASES, ids=_FILTER_IDS)
+async def test_async_iter_job_logs_filter_round_trip(kwargs, expected_levels, expected_streams):
+    """Hand-written async tools path — verify the filter round-trip matches sync."""
+    captured: dict[str, Any] = {}
+    ns = make_async_tools_ns(_capturing_handler(captured))
+    [r async for r in ns.iter_job_logs("esmfold", "j1", **kwargs)]
+    _assert_filter_items(captured["items"], kwargs, expected_levels, expected_streams)

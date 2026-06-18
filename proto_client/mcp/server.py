@@ -14,6 +14,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from proto_client._async.client import AsyncProtoClient
+from proto_client.mcp.prompts import register_prompts
+from proto_client.mcp.resources import register_resources
+from proto_client.mcp.tools import register_tools
 
 
 @asynccontextmanager
@@ -62,12 +65,6 @@ async def health(_request: Request) -> JSONResponse:
 
 def _register_all() -> None:
     """Register tools, prompts, and resources on the ``mcp`` instance."""
-    # Imports kept inside the function to avoid circular references — the
-    # per-primitive modules don't reference ``mcp`` at module level.
-    from proto_client.mcp.prompts import register_prompts
-    from proto_client.mcp.resources import register_resources
-    from proto_client.mcp.tools import register_tools
-
     register_tools(mcp)
     register_prompts(mcp)
     register_resources(mcp)

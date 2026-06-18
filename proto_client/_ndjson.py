@@ -44,7 +44,11 @@ def _collect_logs_page(
     *,
     tail: bool = False,
 ) -> LogsPage:
-    """Drain *items* into a :class:`LogsPage`. ``tail=True`` forces ``next_since=None``."""
+    """Drain *items* into a :class:`LogsPage`.
+
+    ``next_since`` is ``None`` when the stream ended (``end_reason`` set) or ``tail=True``,
+    otherwise the last record's ``seq`` (or *since* on an empty page).
+    """
     records: list[LogRecord] = []
     end_reason: Literal["completed", "truncated", "idle_timeout"] | None = None
     for item in items:

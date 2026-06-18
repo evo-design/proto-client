@@ -13,6 +13,7 @@ from proto_client import AssetRef
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client.assets import AssetsNamespace
 from proto_client.errors import ProtoNotFoundError, ProtoServerError
+from proto_client.utils.asset_helpers import ext_for_mime, origin_of
 
 
 def _sync(handler, base_url: str = "https://api.test") -> httpx.Client:
@@ -121,7 +122,7 @@ def test_unknown_origin_raises_clear_error() -> None:
 
 def test_missing_url_raises_clear_error() -> None:
     with _sync(lambda _r: httpx.Response(200)) as http:
-        with pytest.raises(ValueError, match="no `url`"):
+        with pytest.raises(ValueError, match="no fetch URL"):
             AssetsNamespace([http]).get({"id": "asset_x", "kind": "output"})
 
 
@@ -133,8 +134,6 @@ def test_404_raises_typed_error() -> None:
 
 def test_origin_match_ignores_default_ports() -> None:
     """URL with explicit :443 must match a client whose base_url has no port."""
-    from proto_client.utils.asset_helpers import origin_of
-
     assert origin_of("https://api.test:443/api/v1/assets/x") == "https://api.test"
     assert origin_of("http://api.test:80/x") == "http://api.test"
     assert origin_of("https://api.test:8443/x") == "https://api.test:8443"
@@ -291,8 +290,6 @@ def test_suggested_filename_prefers_filename_field_then_mime_ext() -> None:
 
 
 def test_ext_for_mime_covers_common_types() -> None:
-    from proto_client.utils.asset_helpers import ext_for_mime
-
     assert ext_for_mime("chemical/x-pdb") == ".pdb"
     assert ext_for_mime("chemical/x-cif") == ".cif"
     assert ext_for_mime("application/json+gzip") == ".json.gz"
