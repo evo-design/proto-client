@@ -78,6 +78,28 @@ def test_download_follows_redirect_and_strips_auth(tmp_path: Path) -> None:
     assert out.read_bytes() == b"bytes"
 
 
+def test_redirect_strips_api_key_and_app_user_id(tmp_path: Path) -> None:
+    """Both the API key and the end-user identity header are dropped before an off-origin redirect."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.test":
+            assert request.headers["x-api-key"] == "secret"
+            assert request.headers["x-app-user-id"] == "user-42"
+            return httpx.Response(307, headers={"location": "https://files.test/x"})
+        assert "x-api-key" not in request.headers
+        assert "x-app-user-id" not in request.headers
+        return httpx.Response(200, content=b"bytes")
+
+    http = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://api.test",
+        headers={"X-API-Key": "secret", "x-app-user-id": "user-42"},
+    )
+    with http:
+        out = AssetsNamespace([http]).download(_ref(), tmp_path / "x")
+    assert out.read_bytes() == b"bytes"
+
+
 def test_routes_by_url_origin_across_clients() -> None:
     def tools_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"from-tools")
@@ -119,7 +141,7 @@ def test_origin_match_ignores_default_ports() -> None:
 
 
 def test_redirect_target_error_raises_storage_error_not_auth_error() -> None:
-    """A redirected asset fetch failure must not surface as ProtoAuthError."""
+    """A redirected asset fetch failure surfaces as a storage RuntimeError, not a (synthetic) ProtoAuthError."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.test":
@@ -127,8 +149,10 @@ def test_redirect_target_error_raises_storage_error_not_auth_error() -> None:
         return httpx.Response(403, content=b"<Error>AccessDenied</Error>")
 
     with _sync(handler) as http:
-        with pytest.raises(RuntimeError, match="not a Proto API error"):
+        with pytest.raises(RuntimeError, match="Storage backend returned HTTP 403") as exc_info:
             AssetsNamespace([http]).get(_ref())
+    assert "AccessDenied" in str(exc_info.value)
+    assert exc_info.value.__cause__ is None
 
 
 def test_user_output_model_parses_asset_refs_in_results() -> None:

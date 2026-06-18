@@ -81,7 +81,7 @@ pdb_output = tp.results[0].constructs[0].segments[0].constraints["fold"].data["p
 pdb_text = client.assets.decode(pdb_output)
 ```
 
-The client fetches only through authenticated Proto API origins, and strips authentication headers before following any redirect away from those origins. Not every ref is fetchable: upload-allocation refs, reference-database refs without an API-readable URL, and refs missing a `url` are rejected. Async clients expose the same namespace with `await`.
+The client fetches only through authenticated Proto API origins, and strips authentication and end-user identity headers before following any redirect away from those origins. Not every ref is fetchable: upload-allocation refs, reference-database refs without an API-readable URL, and refs missing a `url` are rejected. Async clients expose the same namespace with `await`.
 
 ## Exporting a run's results
 

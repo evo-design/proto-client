@@ -58,7 +58,7 @@ jobs:
     - name: Regenerate and check for drift
       run: |
         python scripts/gen_sync.py
-        git diff --exit-code proto_client/runs.py || {
-          echo "::error::proto_client/runs.py is out of sync with _async/runs.py. Run 'python scripts/gen_sync.py' and commit."
+        git diff --exit-code proto_client/runs.py proto_client/_ndjson.py || {
+          echo "::error::Generated sync modules are out of date. Run 'python scripts/gen_sync.py' and commit."
           exit 1
         }

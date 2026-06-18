@@ -320,11 +320,29 @@ async def test_inline_assets_leaves_large_ref_untouched(mock_client):
     mock_client.assets.decode.assert_not_awaited()
 
 
-async def test_inline_assets_never_inlines_structures(mock_client):
-    """chemical/* structures stay as refs even when small — raw coordinates would flood context, and downstream tools take the ref."""
+async def test_inline_assets_inlines_small_structure(mock_client):
+    """A small chemical/* structure is decodable and under the cap, so it inlines as text."""
+    mock_client.assets.decode.return_value = "HEADER\nATOM      1  N"
     out = await _inline_assets({"structure": _ASSET_STRUCTURE}, mock_client.assets)
-    assert out == {"structure": _ASSET_STRUCTURE}
+    assert out == {"structure": "HEADER\nATOM      1  N"}
+    mock_client.assets.decode.assert_awaited_once()
+
+
+async def test_inline_assets_leaves_large_structure_as_ref(mock_client):
+    """A structure whose stored size exceeds the cap stays a ref and is never fetched."""
+    big_structure = {**_ASSET_STRUCTURE, "size_bytes": 64 * 1024}
+    out = await _inline_assets({"structure": big_structure}, mock_client.assets)
+    assert out == {"structure": big_structure}
     mock_client.assets.decode.assert_not_awaited()
+
+
+async def test_inline_assets_inlines_decodable_ref_without_size(mock_client):
+    """A decodable ref missing size_bytes is fetched and gated on its decoded size, not skipped."""
+    no_size = {k: v for k, v in _ASSET_SMALL_JSON.items() if k != "size_bytes"}
+    mock_client.assets.decode.return_value = {"plddt": 91}
+    out = await _inline_assets({"scores": no_size}, mock_client.assets)
+    assert out == {"scores": {"plddt": 91}}
+    mock_client.assets.decode.assert_awaited_once()
 
 
 async def test_fetch_asset_decodes_small_content(mock_client):
@@ -333,7 +351,7 @@ async def test_fetch_asset_decodes_small_content(mock_client):
 
 
 async def test_fetch_asset_still_returns_structure_when_asked(mock_client):
-    """Structures aren't auto-inlined, but the agent can still pull one explicitly via fetch_asset."""
+    """The agent can pull a structure explicitly via fetch_asset (e.g. one too large to auto-inline)."""
     mock_client.assets.decode.return_value = "HEADER\nATOM  1  N"
     assert await fetch_asset_impl(mock_client, _ASSET_STRUCTURE) == "HEADER\nATOM  1  N"
 

@@ -257,7 +257,7 @@ async def run_tool_impl(
 # --- Asset inlining for agent-facing results ---
 
 _INLINE_MIME_EXACT = frozenset({"application/json", "application/json+gzip"})
-_INLINE_MIME_PREFIXES = ("text/",)
+_INLINE_MIME_PREFIXES = ("text/", "chemical/")
 _MAX_INLINE_BYTES = 32 * 1024  # keep an inlined asset small enough not to blow agent context; larger stay refs
 
 
@@ -294,21 +294,19 @@ async def _inline_assets(value: Any, assets: AsyncAssetsNamespace) -> Any:
     """
 
     async def _inline(ref_value: Any) -> Any:
-        if not _is_asset_ref(ref_value):  # non-fetchable / url-less ref → leave in place
+        if not _is_asset_ref(ref_value):
             return ref_value
-        size = ref_value.get("size_bytes")
         mime = ref_value.get("mime_type") or ""
-        if _is_decodable(mime) and isinstance(size, int) and 0 <= size <= _MAX_INLINE_BYTES:
-            try:
-                decoded = await assets.decode(ref_value)
-            except Exception as exc:  # broad on purpose: one bad asset must not fail the whole tool result
-                logger.warning("Could not inline asset %s; leaving ref in place: %s", ref_value.get("id"), exc)
-                return ref_value
-            # `size` is the *stored* size; a +gzip payload can decode far larger, so re-check
-            # the decoded size to keep an expanded asset from blowing out the agent context.
-            if _decoded_byte_len(decoded) <= _MAX_INLINE_BYTES:
-                return decoded
-        return ref_value
+        size = ref_value.get("size_bytes")
+        if not _is_decodable(mime) or (isinstance(size, int) and size > _MAX_INLINE_BYTES):
+            return ref_value
+        try:
+            decoded = await assets.decode(ref_value)
+        except Exception as exc:  # broad on purpose: one bad asset must not fail the whole tool result
+            logger.warning("Could not inline asset %s; leaving ref in place: %s", ref_value.get("id"), exc)
+            return ref_value
+        # Gate on the decoded size: a +gzip ref can expand past the cap, and refs may omit size_bytes.
+        return decoded if _decoded_byte_len(decoded) <= _MAX_INLINE_BYTES else ref_value
 
     return await awalk_assetrefs(value, _inline)
 

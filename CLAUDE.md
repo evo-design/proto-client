@@ -28,9 +28,9 @@ python scripts/gen_sync.py
 
 ### Async-First Code Generation
 
-The async code in `proto_client/_async/` is the **source of truth**. The sync `proto_client/runs.py` is **auto-generated** from `_async/runs.py` via `scripts/gen_sync.py` (uses `unasync` for token-level transforms). CI verifies sync stays in sync with async.
+The async code in `proto_client/_async/` is the **source of truth**. The sync `proto_client/runs.py` and `proto_client/_ndjson.py` are **auto-generated** from their `_async/` sources via `scripts/gen_sync.py` (uses `unasync` for token-level transforms). CI verifies the generated files stay in sync with their async sources.
 
-**When editing runs logic**: modify `_async/runs.py`, then run `python scripts/gen_sync.py`. Never edit `runs.py` directly. CI runs `gen_sync.py` and checks `git diff --exit-code` to enforce this.
+**When editing a generated module**: modify the `_async/` source, then run `python scripts/gen_sync.py`. Never edit the generated `runs.py` / `_ndjson.py` directly. CI runs `gen_sync.py` and checks `git diff --exit-code` on both to enforce this.
 
 Only files in the `SYNC_TARGETS` list in `scripts/gen_sync.py` are transformed. Currently those are `_ndjson.py` and `runs.py`. If adding a new async namespace to `_async/`, add it to `SYNC_TARGETS`.
 

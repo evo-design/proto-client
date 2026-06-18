@@ -100,7 +100,7 @@ class AssetRef(BaseModel):
         return f"{safe_id}{ext_for_mime(self.mime_type)}"
 
     def _repr_html_(self) -> str:
-        """Compact inline card for Jupyter; all interpolated values escaped against XSS."""
+        """Compact inline card for Jupyter; all interpolated text is HTML-escaped."""
         size = self.size_bytes
         if size is None:
             size_str = ""
@@ -111,7 +111,11 @@ class AssetRef(BaseModel):
         else:
             size_str = f" · {size} B"
         mime = html.escape(self.mime_type or "unknown")
-        link = f'<a href="{html.escape(self.url, quote=True)}" target="_blank">download</a>' if self.url else "(no url)"
+        # Only render a clickable link for http(s) urls — never an executable scheme like javascript:.
+        if self.url and self.url.lower().startswith(("http://", "https://")):
+            link = f'<a href="{html.escape(self.url, quote=True)}" target="_blank">download</a>'
+        else:
+            link = "(no url)"
         return (
             '<div style="font-family:monospace;border-left:3px solid #888;padding:4px 8px">'
             f"<strong>AssetRef</strong> · {mime}{size_str} · {link}<br>"

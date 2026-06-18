@@ -813,6 +813,20 @@ def test_sync_iter_logs_path_and_params():
     assert isinstance(rows[0], LogRecord) and rows[0].seq == 1
 
 
+def test_sync_logs_tail_conflicts_raise():
+    """Reject tail combined with since or follow, on both iter_logs and get_logs."""
+    ns = make_sync_ns(lambda _: ndjson_response(b""))
+    with pytest.raises(ValueError, match="tail is mutually exclusive"):
+        list(ns.iter_logs("r1", tail=5, since=1))
+    with pytest.raises(ValueError, match="tail is mutually exclusive"):
+        list(ns.iter_logs("r1", tail=5, follow=True))
+    with pytest.raises(ValueError, match="tail is mutually exclusive"):
+        ns.get_logs("r1", tail=5, since=1)
+    # tail alone is allowed
+    rows = list(make_sync_ns(lambda _: ndjson_response(logs_payload(log_line(1)))).iter_logs("r1", tail=5))
+    assert [r.seq for r in rows if isinstance(r, LogRecord)] == [1]
+
+
 @pytest.mark.parametrize(
     ("payload", "since_in", "expected_seqs", "expected_next_since", "expected_end_reason"),
     [

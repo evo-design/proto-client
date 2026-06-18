@@ -89,8 +89,8 @@ class AsyncAssetsNamespace:
             if redirected.is_error:
                 await redirected.aread()
                 raise RuntimeError(
-                    f"Storage backend HTTP {redirected.status_code} at {location!r} (not a Proto API error)"
-                ) from from_response(redirected)
+                    f"Storage backend returned HTTP {redirected.status_code} at {location!r}: {redirected.text[:200]}"
+                )
             yield redirected
         finally:
             await redirected.aclose()

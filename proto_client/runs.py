@@ -292,13 +292,15 @@ class RunsNamespace:
         stopping. Discriminate via ``isinstance`` or the ``type`` field.
 
         Pass ``tail=N`` for the last N records (ascending seq order, server-side
-        reverse scan). Mutually exclusive with ``since`` and ``follow``.
+        reverse scan). Mutually exclusive with ``since`` and ``follow`` — combining
+        them raises :class:`ValueError`.
 
         Pass ``level`` and/or ``stream`` to filter server-side; both accept a
         list and round-trip as repeated query-string entries (e.g.
         ``level=["warning", "error"]`` becomes ``?level=warning&level=error``).
-        Older backends that don't recognise the params silently ignore them.
         """
+        if tail is not None and (since is not None or follow):
+            raise ValueError("tail is mutually exclusive with since and follow")
         params: list[tuple[str, Any]] = [("follow", str(follow).lower())]
         if since is not None:
             params.append(("since", since))

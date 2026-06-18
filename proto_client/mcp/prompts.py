@@ -91,7 +91,7 @@ Proto Language is a constraint-based optimization framework for biological seque
 2. **Choose optimizer**: rejection-sampling (exploration), mcmc (refinement), beam-search (autoregressive).
 3. **Select generators** matching the sequence type and strategy.
 4. **Layer constraints**: filters first (with threshold), then scoring constraints (with weights).
-5. **Use list_components + get_tool_schema** to verify keys, parameters, and schemas.
+5. **Use list_components** (or the bio:// resources) to verify component keys, parameters, and config schemas.
 6. **Use validate_program** to check the JSON before submission.
 """
 
@@ -99,8 +99,8 @@ Proto Language is a constraint-based optimization framework for biological seque
         f"Design a proto-language optimization program for the following goal:\n\n"
         f"**Goal:** {goal}\n"
         f"**Sequence type:** {sequence_type}\n\n"
-        f"Follow the design workflow step by step. Use list_components, "
-        f"get_tool_schema, and validate_program to verify your choices."
+        f"Follow the design workflow step by step. Use list_components "
+        f"and validate_program to verify your choices."
     )
 
     return [

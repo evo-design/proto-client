@@ -14,7 +14,7 @@ from proto_client.models import AssetRef
 # ``run.stage_results[...]`` — both carry the canonical ``url`` field
 # stamped by the backend.
 AssetLike = AssetRef | dict[str, Any]
-SENSITIVE_REDIRECT_HEADERS = ("authorization", "proxy-authorization", "x-api-key", "cookie")
+SENSITIVE_REDIRECT_HEADERS = ("authorization", "proxy-authorization", "x-api-key", "x-app-user-id", "cookie")
 
 
 def asset_url(ref_or_dict: AssetLike) -> str:
