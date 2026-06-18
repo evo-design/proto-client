@@ -124,6 +124,24 @@ def test_runs_submit_wait_and_export(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == str(out_zip)
 
 
+def test_runs_submit_wait_writes_run_json_to_output(tmp_path, capsys):
+    prog = tmp_path / "program.json"
+    prog.write_text("{}")
+    out = tmp_path / "run.json"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(202, json={"run_id": "r1", "status": "pending", "message": "ok"})
+        return httpx.Response(200, json=run_response_json("r1", "completed"))
+
+    client = MagicMock()
+    client.runs = make_sync_ns(handler)
+    args = build_parser().parse_args(["runs", "submit", str(prog), "--wait", "-o", str(out)])
+
+    assert cmd_runs_submit(client, args) == 0
+    assert json.loads(out.read_text())["id"] == "r1"
+
+
 def test_runs_submit_export_requires_wait(tmp_path, capsys):
     prog = tmp_path / "program.json"
     prog.write_text("{}")

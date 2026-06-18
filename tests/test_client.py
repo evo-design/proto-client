@@ -158,3 +158,12 @@ def test_close_closes_all_clients_and_reraises_first_error():
 
     assert close_calls == [1, 1]
     assert c._clients == []
+
+
+def test_public_api_reexports():
+    """Errors, the ProtoError root, and the asset helpers are importable from the package root."""
+    import proto_client
+
+    for name in ("ProtoError", "JobFailedError", "JobCancelledError", "AssetLike", "is_assetref", "coerce_assetref"):
+        assert name in proto_client.__all__, f"{name} missing from __all__"
+        assert hasattr(proto_client, name), f"{name} not exported"

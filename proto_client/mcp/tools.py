@@ -28,6 +28,8 @@ from pydantic import BaseModel, Field
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.client import AsyncProtoClient
 from proto_client.errors import (
+    JobCancelledError,
+    JobFailedError,
     ProtoAPIError,
     ProtoAuthError,
     ProtoConflictError,
@@ -137,7 +139,7 @@ def _handle_proto_errors(fn: _F | None = None, *, error_cls: type[FastMCPError] 
                 raise error_cls(f"Conflict: {e.message}") from e
             except ProtoServerError as e:
                 raise error_cls(f"Server error (retriable): {e.message}") from e
-            except (RunFailedError, RunCancelledError) as e:
+            except (RunFailedError, RunCancelledError, JobFailedError, JobCancelledError) as e:
                 raise error_cls(str(e)) from e
             except TimeoutError as e:
                 raise error_cls(f"Timed out: {e}") from e

@@ -54,10 +54,10 @@ ProtoClient / AsyncProtoClient
 
 ### Error Hierarchy
 
-`errors.py` maps HTTP status codes to typed exceptions via `from_response()`:
+Every SDK error derives from `ProtoError`, so `except ProtoError` is the catch-all. `errors.py` maps HTTP status codes to typed exceptions via `from_response()`:
 
-- `ProtoAPIError` (base) → `ProtoAuthError` (401/403), `ProtoNotFoundError` (404), `ProtoConflictError` (409), `ProtoValidationError` (422), `ProtoRateLimitError` (429), `ProtoServerError` (5xx)
-- `RunFailedError` / `RunCancelledError` — raised by polling convenience methods
+- `ProtoError` (root) → `ProtoAPIError` → `ProtoAuthError` (401/403), `ProtoNotFoundError` (404), `ProtoConflictError` (409), `ProtoValidationError` (422), `ProtoRateLimitError` (429), `ProtoServerError` (5xx)
+- `RunFailedError` / `RunCancelledError` (runs) and `JobFailedError` / `JobCancelledError` (tools) — raised by the polling convenience methods; they subclass `(ProtoError, RuntimeError)` and carry `run_id`/`job_id`. They are **not** under `ProtoAPIError` (no `status_code`).
 
 ### MCP Server
 

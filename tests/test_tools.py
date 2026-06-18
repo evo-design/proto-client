@@ -7,7 +7,7 @@ import pytest
 from helpers import job_payload, mock_response
 from pydantic import BaseModel
 
-from proto_client.errors import ProtoAPIError, ProtoConflictError, ProtoNotFoundError
+from proto_client.errors import JobCancelledError, JobFailedError, ProtoAPIError, ProtoConflictError, ProtoNotFoundError
 from proto_client.models import (
     BatchItemFailure,
     BatchItemSuccess,
@@ -175,11 +175,13 @@ def test_run_with_output_model(mock_http):
 
 def test_run_raises_on_failure(mock_http):
     mock_http.post.return_value = mock_response({"job_id": "j1", "status": "pending"}, 202)
-    mock_http.get.return_value = mock_response(job_payload("failed", error="OOM", completed=True))
+    mock_http.get.return_value = mock_response(job_payload("failed", job_id="j1", error="OOM", completed=True))
 
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(RuntimeError, match="OOM"):
+    with pytest.raises(JobFailedError) as exc_info:
         ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01)
+    assert exc_info.value.job_id == "j1"
+    assert exc_info.value.error == "OOM"
 
 
 def test_run_raises_on_timeout(mock_http):
@@ -228,8 +230,9 @@ def test_run_raises_on_cancelled(mock_http):
     mock_http.get.return_value = mock_response(job_payload("cancelled", job_id="j1", completed=True))
 
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(RuntimeError, match="cancelled"):
+    with pytest.raises(JobCancelledError) as exc_info:
         ns.run("esmfold-prediction", {"sequences": ["MKTL"]}, poll_interval=0.01)
+    assert exc_info.value.job_id == "j1"
 
 
 def test_http_error_raises_typed_error(mock_http):
@@ -439,10 +442,14 @@ def test_run_batch_output_model_validation_failure(mock_http):
 
 def test_run_batch_raises_on_failure(mock_http):
     mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
-    mock_http.get.return_value = mock_response(job_payload("failed", error="Backend crashed", completed=True))
+    mock_http.get.return_value = mock_response(
+        job_payload("failed", job_id="b1", error="Backend crashed", completed=True)
+    )
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(RuntimeError, match="Backend crashed"):
+    with pytest.raises(JobFailedError) as exc_info:
         ns.run_batch("blast", [{}], poll_interval=0.01)
+    assert exc_info.value.job_id == "b1"
+    assert exc_info.value.error == "Backend crashed"
 
 
 # ── Error paths for get_schema, submit_batch, get, cancel ──
@@ -522,8 +529,9 @@ def test_run_batch_cancelled(mock_http):
     mock_http.post.return_value = mock_response({"job_id": "b1", "status": "pending"}, 202)
     mock_http.get.return_value = mock_response(job_payload("cancelled", job_id="b1", completed=True))
     ns = ToolsNamespace(mock_http)
-    with pytest.raises(RuntimeError, match="cancelled"):
+    with pytest.raises(JobCancelledError) as exc_info:
         ns.run_batch("blast", [{}], poll_interval=0.01)
+    assert exc_info.value.job_id == "b1"
 
 
 def test_run_batch_timeout(mock_http):

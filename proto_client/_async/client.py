@@ -3,6 +3,7 @@
 import asyncio
 import os
 import platform
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -11,7 +12,8 @@ from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.runs import AsyncRunsNamespace
 from proto_client._async.tools import AsyncToolsNamespace
 from proto_client.errors import from_response
-from proto_client.models import MeResponse
+from proto_client.models import AssetRef, MeResponse
+from proto_client.utils.asset_helpers import awalk_assetrefs, resolve_filename_collision
 from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
 from proto_client.utils.http import AsyncRetryTransport, RetryConfig
 from proto_client.utils.version import VERSION
@@ -103,6 +105,43 @@ class AsyncProtoClient:
             raise from_response(resp)
         return MeResponse.model_validate(resp.json())
 
+    async def export_program(
+        self,
+        program: Any,
+        path: str | Path | None = None,
+        *,
+        format: str = "csv",
+        project: str | None = None,
+    ) -> Path:
+        """Export a proto-language ``Program`` to *path*, downloading AssetRef-referenced bytes.
+
+        Async sibling of :meth:`ProtoClient.export_program` — AssetRef bytes are fetched
+        concurrently-awaited and the proto-language disk write runs in a worker thread.
+
+        ``path=None`` names the folder ``{project}__{YYYY-MM-DD_HHMMSS}`` under CWD.
+        AssetRef cells anywhere in the results are downloaded into ``assets/`` and
+        rewritten to ``"assets/<file>"`` strings before the tables are written.
+        """
+        try:
+            from proto_language.utils.io import (  # type: ignore[import-not-found, unused-ignore]
+                write_results_folder,
+            )
+        except ImportError as e:
+            raise RuntimeError("export_program requires proto-language to be installed alongside proto-client.") from e
+
+        from proto_client.utils.export_names import build_export_name
+
+        out_dir = Path.cwd() / build_export_name(project=project) if path is None else Path(path)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = out_dir / "assets"
+        assets_dir.mkdir(exist_ok=True)
+
+        results = program.extract_results(program.energy_scores)
+        seen: dict[str, str] = {}
+        results = await _amaterialize_assetrefs(results, self.assets, assets_dir, seen)
+
+        return Path(await asyncio.to_thread(write_results_folder, results=results, path=out_dir, format=format))
+
     async def aclose(self) -> None:
         # Close all clients even if one fails.
         results = await asyncio.gather(*(c.aclose() for c in self._clients), return_exceptions=True)
@@ -116,3 +155,32 @@ class AsyncProtoClient:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.aclose()
+
+
+async def _amaterialize_assetrefs(
+    value: Any,
+    assets_ns: AsyncAssetsNamespace,
+    assets_dir: Path,
+    seen: dict[str, str],
+) -> Any:
+    """Async sibling of ``_materialize_assetrefs``: download each AssetRef and rewrite it to ``"assets/<file>"``.
+
+    Each unique ``asset_id`` is fetched once; an HTTP failure leaves a 0-byte ``<name>.missing``
+    placeholder so one bad asset doesn't abort the whole export.
+    """
+
+    async def _materialize(ref_value: Any) -> Any:
+        ref = AssetRef.model_validate(ref_value)  # awalk_assetrefs only yields refs
+        if ref.id in seen:
+            return f"assets/{seen[ref.id]}"
+        filename = resolve_filename_collision(ref.suggested_filename(), ref.id, set(seen.values()))
+        try:
+            data = await assets_ns.get(ref)
+            await asyncio.to_thread((assets_dir / filename).write_bytes, data)
+        except Exception:
+            filename = resolve_filename_collision(filename + ".missing", ref.id, set(seen.values()))
+            await asyncio.to_thread((assets_dir / filename).write_bytes, b"")
+        seen[ref.id] = filename
+        return f"assets/{filename}"
+
+    return await awalk_assetrefs(value, _materialize)

@@ -105,7 +105,7 @@ run = client.runs.run(program_data=...)  # creates and polls to terminal status
 client.runs.export(run.id, "out.zip")
 ```
 
-For a single asset rather than the whole bundle, use `client.assets.download(ref, path)`.
+For a single asset rather than the whole bundle, use `client.assets.download(ref, path)`. Both export routes have async equivalents: `await client.export_program(...)` and `await client.runs.export(...)`.
 
 ## Command line
 

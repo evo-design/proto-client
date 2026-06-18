@@ -10,7 +10,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from proto_client._ndjson import _collect_logs_page, _iter_ndjson_records
-from proto_client.errors import from_response
+from proto_client.errors import JobCancelledError, JobFailedError, from_response
 from proto_client.models import (
     BatchItemFailure,
     BatchItemSuccess,
@@ -67,7 +67,7 @@ class ToolsNamespace:
         resp = self._send(method, path, **kwargs)
         return model.model_validate(resp.json())
 
-    def list(self) -> list[ToolInfo]:
+    def list(self) -> _list[ToolInfo]:
         """List available tools."""
         resp = self._send("GET", "/api/v1/tools")
         return [ToolInfo.model_validate(item) for item in resp.json()]
@@ -192,7 +192,8 @@ class ToolsNamespace:
         An ``Idempotency-Key`` is auto-generated when ``idempotency_key`` is not
         supplied, so the submit is safe to retry without creating a duplicate job.
 
-        Raises RuntimeError on failure/cancellation, TimeoutError on timeout.
+        Raises ``JobFailedError`` / ``JobCancelledError`` on failure/cancellation,
+        ``TimeoutError`` on timeout.
         """
         job_id = self.submit(tool_key, inputs, config, idempotency_key=idempotency_key or uuid4().hex)
         return self._wait(tool_key, job_id, poll_interval, timeout, output_model)
@@ -251,10 +252,10 @@ class ToolsNamespace:
                 return status
             if status.status is JobStatus.failed:
                 logger.info("Job %s reached terminal status: %s", job_id, status.status.value)
-                raise RuntimeError(f"Job {job_id} failed: {status.error}")
+                raise JobFailedError(job_id, status.error)
             if status.status is JobStatus.cancelled:
                 logger.info("Job %s reached terminal status: %s", job_id, status.status.value)
-                raise RuntimeError(f"Job {job_id} was cancelled")
+                raise JobCancelledError(job_id)
             logger.debug("Polling job %s (status=%s)", job_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -298,10 +299,10 @@ class ToolsNamespace:
                 return batch
             if status.status is JobStatus.failed:
                 logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
-                raise RuntimeError(f"Batch job {job_id} failed: {status.error}")
+                raise JobFailedError(job_id, status.error)
             if status.status is JobStatus.cancelled:
                 logger.info("Batch job %s reached terminal status: %s", job_id, status.status.value)
-                raise RuntimeError(f"Batch job {job_id} was cancelled")
+                raise JobCancelledError(job_id)
             logger.debug("Polling batch job %s (status=%s)", job_id, status.status.value)
             remaining = deadline - time.monotonic()
             if remaining <= 0:

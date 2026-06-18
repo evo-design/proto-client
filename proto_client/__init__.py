@@ -6,9 +6,12 @@ import os
 from proto_client._async.client import AsyncProtoClient
 from proto_client.client import ProtoClient
 from proto_client.errors import (
+    JobCancelledError,
+    JobFailedError,
     ProtoAPIError,
     ProtoAuthError,
     ProtoConflictError,
+    ProtoError,
     ProtoNotFoundError,
     ProtoRateLimitError,
     ProtoServerError,
@@ -57,12 +60,14 @@ from proto_client.models import (
     ToolSchema,
     ValidationResponse,
 )
+from proto_client.utils.asset_helpers import AssetLike, coerce_assetref, is_assetref
 from proto_client.utils.http import RetryConfig
 from proto_client.utils.version import VERSION as __version__
 
 __all__ = [
     "__version__",
     "AsyncProtoClient",
+    "AssetLike",
     "AssetRef",
     "BatchItemFailure",
     "BatchItemSuccess",
@@ -75,6 +80,8 @@ __all__ = [
     "ConstructResult",
     "CreateRunResponse",
     "GeneratorSpec",
+    "JobCancelledError",
+    "JobFailedError",
     "JobResponse",
     "JobStatus",
     "JobStatusResponse",
@@ -91,6 +98,7 @@ __all__ = [
     "ProtoAuthError",
     "ProtoClient",
     "ProtoConflictError",
+    "ProtoError",
     "ProtoNotFoundError",
     "ProtoRateLimitError",
     "ProtoServerError",
@@ -113,6 +121,8 @@ __all__ = [
     "ToolInfo",
     "ToolSchema",
     "ValidationResponse",
+    "coerce_assetref",
+    "is_assetref",
 ]
 
 _logger = logging.getLogger("proto_client")

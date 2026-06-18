@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from uuid import uuid4
 
 import httpx
@@ -34,7 +34,7 @@ class AsyncAssetsNamespace:
         await self._write_to(ref, buffer)
         return buffer.getvalue()
 
-    async def decode(self, ref: AssetLike) -> object:
+    async def decode(self, ref: AssetLike) -> Any:
         """Fetch and decode an asset by MIME type.
 
         JSON assets become Python values, chemical/text assets become strings,

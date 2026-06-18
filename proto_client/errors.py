@@ -1,8 +1,10 @@
 """Typed error hierarchy for Proto API responses.
 
-Every error carries ``status_code``, ``message``, and ``request_id``. The
-``from_response`` factory maps an ``httpx.Response`` to the appropriate
-subclass — call sites replace ``response.raise_for_status()`` with::
+Every error raised by the SDK derives from :class:`ProtoError`, so ``except
+ProtoError`` catches both HTTP errors (:class:`ProtoAPIError` and subclasses) and
+the polling errors (:class:`RunFailedError`, :class:`JobFailedError`, etc.). The
+``from_response`` factory maps an ``httpx.Response`` to the appropriate subclass —
+call sites replace ``response.raise_for_status()`` with::
 
     if response.is_error:
         raise errors.from_response(response)
@@ -15,7 +17,11 @@ from typing import Any
 import httpx
 
 
-class ProtoAPIError(Exception):
+class ProtoError(Exception):
+    """Root of every error raised by proto-client."""
+
+
+class ProtoAPIError(ProtoError):
     """Base class for all Proto API errors."""
 
     def __init__(
@@ -98,7 +104,7 @@ class ProtoServerError(ProtoAPIError):
     """5xx — server-side failure (retriable)."""
 
 
-class RunFailedError(RuntimeError):
+class RunFailedError(ProtoError, RuntimeError):
     """An optimization run ended with status ``failed``."""
 
     def __init__(self, run_id: str, error_message: str | None) -> None:
@@ -108,13 +114,32 @@ class RunFailedError(RuntimeError):
         super().__init__(f"Run {run_id} failed: {error_message}")
 
 
-class RunCancelledError(RuntimeError):
+class RunCancelledError(ProtoError, RuntimeError):
     """An optimization run was cancelled."""
 
     def __init__(self, run_id: str) -> None:
         """Initialize with run ID."""
         self.run_id = run_id
         super().__init__(f"Run {run_id} was cancelled")
+
+
+class JobFailedError(ProtoError, RuntimeError):
+    """A tool job ended with status ``failed``."""
+
+    def __init__(self, job_id: str, error: str | None) -> None:
+        """Initialize with job ID and server error message."""
+        self.job_id = job_id
+        self.error = error
+        super().__init__(f"Job {job_id} failed: {error}")
+
+
+class JobCancelledError(ProtoError, RuntimeError):
+    """A tool job was cancelled."""
+
+    def __init__(self, job_id: str) -> None:
+        """Initialize with job ID."""
+        self.job_id = job_id
+        super().__init__(f"Job {job_id} was cancelled")
 
 
 def parse_retry_after(value: str | None) -> float | None:
@@ -212,9 +237,12 @@ def from_response(response: httpx.Response) -> ProtoAPIError:
 
 
 __all__ = [
+    "JobCancelledError",
+    "JobFailedError",
     "ProtoAPIError",
     "ProtoAuthError",
     "ProtoConflictError",
+    "ProtoError",
     "ProtoNotFoundError",
     "ProtoRateLimitError",
     "ProtoServerError",

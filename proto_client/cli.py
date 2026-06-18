@@ -86,7 +86,7 @@ def cmd_runs_submit(client: ProtoClient, args: argparse.Namespace) -> int:
         if args.export:
             print(client.runs.export(run.id, args.export))
         else:
-            _emit_json(run.model_dump(mode="json"), None)
+            _emit_json(run.model_dump(mode="json"), args.output)
         return 0
     created = client.runs.create(program, execute=not args.no_execute)
     print(created.run_id)
@@ -149,6 +149,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--wait", action="store_true", help="Poll until the run reaches a terminal state.")
     mode.add_argument("--no-execute", action="store_true", help="Create the run idle (do not start stages).")
     p_submit.add_argument("--export", metavar="FILE", help="With --wait: write the results zip here.")
+    p_submit.add_argument(
+        "-o", "--output", metavar="FILE", help="With --wait: write the run JSON here (default: stdout)."
+    )
     p_submit.set_defaults(func=cmd_runs_submit)
     p_status = runs.add_parser("status", help="Show a run's status.")
     p_status.add_argument("run_id")

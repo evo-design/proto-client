@@ -1,19 +1,18 @@
 """Main client entrypoint."""
 
-import hashlib
 import os
 import platform
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from proto_client.assets import AssetsNamespace
 from proto_client.errors import from_response
-from proto_client.models import MeResponse
+from proto_client.models import AssetRef, MeResponse
 from proto_client.runs import RunsNamespace
 from proto_client.tools import ToolsNamespace
-from proto_client.utils.asset_helpers import coerce_assetref, walk_assetrefs
+from proto_client.utils.asset_helpers import resolve_filename_collision, walk_assetrefs
 from proto_client.utils.defaults import RUNS_BASE_URL, TOOLS_BASE_URL, resolve_base_url
 from proto_client.utils.http import RetryConfig, RetryTransport
 from proto_client.utils.version import VERSION
@@ -184,29 +183,18 @@ def _materialize_assetrefs(
     """
 
     def _materialize(ref_value: Any) -> Any:
-        ref = coerce_assetref(ref_value)
-        if ref is None:  # pragma: no cover - walk_assetrefs only yields refs
-            return ref_value
+        ref = AssetRef.model_validate(ref_value)  # walk_assetrefs only yields refs
         if ref.id in seen:
             return f"assets/{seen[ref.id]}"
-        filename = _resolve_filename_collision(ref.suggested_filename(), ref.id, set(seen.values()))
+        filename = resolve_filename_collision(ref.suggested_filename(), ref.id, set(seen.values()))
         dest = assets_dir / filename
         try:
             dest.write_bytes(assets_ns.get(ref))
         except Exception:
-            filename = _resolve_filename_collision(filename + ".missing", ref.id, set(seen.values()))
+            filename = resolve_filename_collision(filename + ".missing", ref.id, set(seen.values()))
             dest = assets_dir / filename
             dest.write_bytes(b"")
         seen[ref.id] = filename
         return f"assets/{filename}"
 
     return walk_assetrefs(value, _materialize)
-
-
-def _resolve_filename_collision(filename: str, asset_id: str, taken: set[str]) -> str:
-    """If *filename* is already in *taken* under a different id, append an 8-hex sha256 suffix."""
-    if filename not in taken:
-        return filename
-    stem, suffix = PurePosixPath(filename).stem, PurePosixPath(filename).suffix
-    short = hashlib.sha256(asset_id.encode()).hexdigest()[:8]
-    return f"{stem}_{short}{suffix}"

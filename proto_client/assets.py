@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from uuid import uuid4
 
 import httpx
@@ -38,7 +38,7 @@ class AssetsNamespace:
         self._write_to(ref, buffer)
         return buffer.getvalue()
 
-    def decode(self, ref: AssetLike) -> object:
+    def decode(self, ref: AssetLike) -> Any:
         """Fetch and decode an asset by MIME type.
 
         JSON assets become Python values, chemical/text assets become strings,

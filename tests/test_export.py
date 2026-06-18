@@ -11,11 +11,13 @@ from types import SimpleNamespace
 import httpx
 import numpy as np
 
-from proto_client import ProtoClient
+from proto_client import AsyncProtoClient, ProtoClient
+from proto_client._async.assets import AsyncAssetsNamespace
+from proto_client._async.client import _amaterialize_assetrefs
 from proto_client.assets import AssetsNamespace
-from proto_client.client import _materialize_assetrefs, _resolve_filename_collision
+from proto_client.client import _materialize_assetrefs
 from proto_client.models import AssetRef
-from proto_client.utils.asset_helpers import coerce_assetref
+from proto_client.utils.asset_helpers import coerce_assetref, resolve_filename_collision
 
 
 def _mock_http(handler, base_url: str = "https://api.test") -> httpx.Client:
@@ -95,8 +97,8 @@ def test_coerce_to_assetref_recognizes_typed_and_dict_forms() -> None:
 
 def test_resolve_filename_collision_adds_sha_suffix() -> None:
     """Distinct asset ids sharing a filename get an 8-hex sha256 suffix on the second."""
-    assert _resolve_filename_collision("a.pdb", "asset_x", set()) == "a.pdb"
-    out = _resolve_filename_collision("a.pdb", "asset_x", {"a.pdb"})
+    assert resolve_filename_collision("a.pdb", "asset_x", set()) == "a.pdb"
+    out = resolve_filename_collision("a.pdb", "asset_x", {"a.pdb"})
     assert out.startswith("a_") and out.endswith(".pdb") and len(out) == len("a_xxxxxxxx.pdb")
 
 
@@ -182,3 +184,47 @@ def test_export_program_writes_folder_layout(tmp_path: Path) -> None:
     sequences_csv = (out / "sequences.csv").read_text()
     assert "structure_path" in sequences_csv
     assert "assets/res0_con0_seg0_structure.pdb" in sequences_csv
+
+
+async def test_amaterialize_assetrefs_dedupes_by_id_and_writes_bytes(tmp_path: Path) -> None:
+    """Async materializer: same asset id seen twice yields one file; bytes fetched once."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, content=b"BYTES")
+
+    ref = {"id": "asset_x", "kind": "output", "url": "https://api.test/api/v1/assets/asset_x"}
+    payload = {"a": ref, "nested": [ref, {"unrelated": 1.2}]}
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://api.test") as http:
+        out = await _amaterialize_assetrefs(payload, AsyncAssetsNamespace([http]), tmp_path, {})
+
+    assert out == {"a": "assets/asset_x", "nested": ["assets/asset_x", {"unrelated": 1.2}]}
+    assert (tmp_path / "asset_x").read_bytes() == b"BYTES"
+    assert len(calls) == 1
+
+
+@pytest.mark.timeout(30)  # generous: first call pays the one-time proto-language import cost
+async def test_async_export_program_writes_folder_layout(tmp_path: Path) -> None:
+    """Async export_program produces the same folder layout as the sync version."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"REMOTE-PDB")
+
+    client = AsyncProtoClient(api_key="x")
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://api.test")
+    try:
+        client.assets = AsyncAssetsNamespace([http])
+        program = _FakeProgram(_make_results_with_payloads())
+        out = await client.export_program(program, tmp_path / "out", format="csv")
+    finally:
+        await http.aclose()
+        await client.aclose()
+
+    assert out == tmp_path / "out"
+    for name in ("sequences", "constraints", "constructs", "optimization"):
+        assert (out / f"{name}.csv").exists()
+    assert (out / "sequences.fasta").exists()
+    assert (out / "assets" / "res0_con0_seg0_structure.pdb").exists()
+    assert (out / "assets" / "asset_extra.pdb").read_bytes() == b"REMOTE-PDB"

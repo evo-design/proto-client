@@ -1,8 +1,10 @@
 """Shared helpers for the assets namespace."""
 
 import gzip
+import hashlib
 import json
 from collections.abc import Awaitable, Callable
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
@@ -137,3 +139,12 @@ async def awalk_assetrefs(value: Any, transform: Callable[[Any], Awaitable[Any]]
     if isinstance(value, list):
         return [await awalk_assetrefs(item, transform) for item in value]
     return value
+
+
+def resolve_filename_collision(filename: str, asset_id: str, taken: set[str]) -> str:
+    """If *filename* is already in *taken* under a different id, append an 8-hex sha256 suffix."""
+    if filename not in taken:
+        return filename
+    stem, suffix = PurePosixPath(filename).stem, PurePosixPath(filename).suffix
+    short = hashlib.sha256(asset_id.encode()).hexdigest()[:8]
+    return f"{stem}_{short}{suffix}"

@@ -7,13 +7,18 @@ import httpx
 import pytest
 
 from proto_client.errors import (
+    JobCancelledError,
+    JobFailedError,
     ProtoAPIError,
     ProtoAuthError,
     ProtoConflictError,
+    ProtoError,
     ProtoNotFoundError,
     ProtoRateLimitError,
     ProtoServerError,
     ProtoValidationError,
+    RunCancelledError,
+    RunFailedError,
     from_response,
     parse_retry_after,
 )
@@ -228,3 +233,22 @@ def test_extract_message_empty_detail_list() -> None:
     body = {"detail": [], "message": "fallback msg"}
     err = from_response(_response(500, body))
     assert err.message == "fallback msg"
+
+
+def test_proto_error_is_catch_all_root() -> None:
+    """``except ProtoError`` catches both HTTP errors and run/job polling errors."""
+    assert isinstance(from_response(_response(500, {"detail": "x"})), ProtoError)
+    assert isinstance(RunFailedError("r1", "x"), ProtoError)
+    assert isinstance(RunCancelledError("r1"), ProtoError)
+    assert isinstance(JobFailedError("j1", "x"), ProtoError)
+    assert isinstance(JobCancelledError("j1"), ProtoError)
+    # Run/job errors stay RuntimeError subclasses for back-compat.
+    assert isinstance(JobFailedError("j1", "x"), RuntimeError)
+
+
+def test_job_errors_carry_ids_and_message() -> None:
+    failed = JobFailedError("j1", "OOM")
+    assert failed.job_id == "j1"
+    assert failed.error == "OOM"
+    assert str(failed) == "Job j1 failed: OOM"
+    assert JobCancelledError("j2").job_id == "j2"
