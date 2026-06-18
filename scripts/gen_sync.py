@@ -14,8 +14,8 @@ job in ``.github/workflows/checks.yml``).
 
 Only files explicitly listed in ``SYNC_TARGETS`` are transformed — we do
 NOT point ``todir`` at the whole ``proto_client/`` package, because that
-would clobber hand-written modules (``client.py``, ``tools.py``) that
-intentionally diverge from their async counterparts.
+would clobber hand-written modules (``client.py``, ``tools.py``,
+``assets.py``) that intentionally diverge from their async counterparts.
 """
 
 import re
@@ -29,8 +29,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ASYNC_DIR = ROOT / "proto_client" / "_async"
 SYNC_DIR = ROOT / "proto_client"
 
-# Files in _async/ to convert. Keep this list narrow — client.py and tools.py
-# are hand-written on both sides and must not be generated.
+# Files in _async/ to convert. Keep this list narrow — client.py, tools.py,
+# and assets.py are hand-written on both sides and must not be generated.
 SYNC_TARGETS = ["_ndjson.py", "runs.py"]
 
 # Token-level substitutions on top of unasync's defaults (which already handle
