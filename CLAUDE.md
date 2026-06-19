@@ -61,7 +61,7 @@ Every SDK error derives from `ProtoError`, so `except ProtoError` is the catch-a
 
 ### MCP Server
 
-`proto_client/mcp/` is a FastMCP server exposing Proto Bio capabilities to AI agents. It wraps `AsyncProtoClient` and registers tools (bioinformatics tool discovery + execution, optimization-run management, and asset retrieval), plus MCP prompts and resources. The `instructions` block in `server.py` is the authoritative, always-current surface — don't re-enumerate the tool list here.
+`proto_client/mcp/` is a FastMCP server exposing Proto Bio capabilities to AI agents. It wraps `AsyncProtoClient` and registers tools (bioinformatics tool discovery + execution, optimization-run management, and asset retrieval), plus MCP prompts and resources. The `instructions` block in `server.py` is the authoritative, always-current surface — don't re-enumerate the tool list here. A user-facing walkthrough of connecting and interacting lives in [`docs/mcp.md`](docs/mcp.md).
 
 ```bash
 pip install proto-client[mcp]

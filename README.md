@@ -127,7 +127,7 @@ Results are emitted as JSON (stdout or `-o FILE`); binary outputs download to `-
 
 ## Using with AI agents (MCP)
 
-Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio.
+Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio. For a step-by-step walkthrough of connecting and interacting, see the [**MCP user guide**](docs/mcp.md).
 
 ### Hosted (HTTP)
 
@@ -228,6 +228,17 @@ proto-client-mcp --transport http --port 9300           # HTTP
 
 
 The server exposes `whoami` (workspace, scopes, and credits for the calling key), tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`, and `fetch_asset` for result assets), and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints` / `get_run_timepoint`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
+
+### Interacting with the server
+
+Once connected, talk to your agent in natural language — it calls the right tools. A quick first loop:
+
+- Run `/mcp` to confirm **proto-bio · Connected** with a non-zero tool count.
+- "Check my Proto workspace and credits" → `whoami`.
+- "Find a tool to predict protein structure and run it on this sequence…" → `search_tools` → `get_tool_schema` → `run_tool` → `fetch_asset`.
+- "Design and run an optimization program for…" → the `design_program` prompt → `validate_program` → `create_run` → `get_run_metrics`.
+
+Prompts surface as slash commands (e.g. `/mcp__proto-bio__design_program`) and resources as `@`-mentions (e.g. `@proto-bio:proto-tools://tools/<key>`). See the [MCP user guide](docs/mcp.md) for the full walkthrough.
 
 ## Development
 
