@@ -127,7 +127,72 @@ Results are emitted as JSON (stdout or `-o FILE`); binary outputs download to `-
 
 ## Using with AI agents (MCP)
 
-Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client.
+Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio.
+
+### Hosted (HTTP)
+
+Point your agent at `https://mcp.evodesign.org/mcp` and authenticate with your Proto API key as a Bearer token; no install required.
+
+**Claude Code:**
+
+```bash
+claude mcp add --transport http proto-bio https://mcp.evodesign.org/mcp \
+  --header "Authorization: Bearer $PROTO_API_KEY"
+```
+
+**`.mcp.json` / Claude Desktop:**
+
+```json
+{
+  "mcpServers": {
+    "proto-bio": {
+      "type": "http",
+      "url": "https://mcp.evodesign.org/mcp",
+      "headers": { "Authorization": "Bearer ${PROTO_API_KEY}" }
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json`) — same shape, but env interpolation uses `${env:PROTO_API_KEY}`.
+
+**VS Code** (`.vscode/mcp.json`) — top-level key is `servers`, and secrets come from `inputs`:
+
+```json
+{
+  "inputs": [{ "type": "promptString", "id": "proto-api-key", "description": "Proto API key", "password": true }],
+  "servers": {
+    "proto-bio": {
+      "type": "http",
+      "url": "https://mcp.evodesign.org/mcp",
+      "headers": { "Authorization": "Bearer ${input:proto-api-key}" }
+    }
+  }
+}
+```
+
+**Codex** (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.proto-bio]
+url = "https://mcp.evodesign.org/mcp"
+bearer_token_env_var = "PROTO_API_KEY"
+```
+
+**Gemini CLI** (`~/.gemini/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "proto-bio": {
+      "httpUrl": "https://mcp.evodesign.org/mcp",
+      "headers": { "Authorization": "Bearer $PROTO_API_KEY" }
+    }
+  }
+}
+```
+
+### Local (stdio)
 
 ```bash
 pip install proto-client[mcp]
@@ -147,14 +212,22 @@ Add it to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc
 }
 ```
 
-The server exposes `whoami` (workspace, scopes, and credits for the calling key), tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`, and `fetch_asset` for result assets), and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints` / `get_run_timepoint`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
-
 A `proto-client-mcp` CLI script is installed alongside:
 
 ```bash
 proto-client-mcp                                        # stdio (default)
 proto-client-mcp --transport http --port 9300           # HTTP
 ```
+
+
+
+```bash
+
+```
+
+
+
+The server exposes `whoami` (workspace, scopes, and credits for the calling key), tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`, and `fetch_asset` for result assets), and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints` / `get_run_timepoint`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
 
 ## Development
 

@@ -69,7 +69,14 @@ python -m proto_client.mcp              # stdio transport (Claude Desktop/Code)
 python -m proto_client.mcp --transport http --port 9300  # HTTP transport
 ```
 
-The server lifespan creates/closes an `AsyncProtoClient` that reads config from env vars (`PROTO_API_KEY`, etc.). Tool handlers are thin wrappers that delegate to client methods and serialize Pydantic models to dicts.
+The server lifespan creates/closes one `AsyncProtoClient` that reads config from env vars (`PROTO_API_KEY`, etc.). Tool handlers are thin wrappers that delegate to client methods and serialize Pydantic models to dicts.
+
+**Per-request auth (`_get_client` / `_bearer_token_from_request` in `tools.py`)**: in an HTTP request, a request carrying `Authorization: Bearer <key>` gets a fresh per-request `AsyncProtoClient(api_key=<key>)` (closed on exit); otherwise handlers fall back to the lifespan client. This gives two HTTP modes:
+
+- The hosted server (`mcp.evodesign.org`) authenticates each request with its own Bearer token.
+
+
+**Deployment**: the MCP server is deployed separately on private infrastructure.
 
 ### CLI
 
