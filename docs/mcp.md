@@ -71,7 +71,7 @@ New to a tool? The **`find_tool`** and **`tool_walkthrough`** prompts (below) gu
 The **runs** surface drives design → validate → run → inspect:
 
 > **You:** "Design a program to optimize this sequence for X."
-> → the **`design_program`** prompt drafts a program, pulling valid building blocks from **`list_components`** (constraints / generators / optimizers).
+> → browse the valid building blocks with **`list_components`** (constraints / generators / optimizers) and assemble the program JSON.
 >
 > → **`validate_program`** catches errors first → **`create_run`** → **`run_stage`** → poll **`get_run_status`**.
 >
@@ -84,7 +84,7 @@ The server exposes three MCP surfaces:
 
 - **Tools** — called automatically by the agent: `mcp__proto-bio__whoami`, `…__run_tool`, `…__create_run`, etc.
 - **Prompts** — slash commands you invoke yourself:
-  `/mcp__proto-bio__design_program`, `…__find_tool`, `…__implement_constraint`, `…__implement_generator`, `…__tool_walkthrough`.
+  `/mcp__proto-bio__find_tool`, `…__tool_walkthrough`.
 - **Resources** — `@`-mentions for reference docs:
   `@proto-bio:proto-tools://tools/<key>`, `@proto-bio:bio://constraints/<key>`, `…/schemas/<key>`, `…/citations/<key>`.
 

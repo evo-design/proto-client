@@ -236,9 +236,9 @@ Once connected, talk to your agent in natural language — it calls the right to
 - Run `/mcp` to confirm **proto-bio · Connected** with a non-zero tool count.
 - "Check my Proto workspace and credits" → `whoami`.
 - "Find a tool to predict protein structure and run it on this sequence…" → `search_tools` → `get_tool_schema` → `run_tool` → `fetch_asset`.
-- "Design and run an optimization program for…" → the `design_program` prompt → `validate_program` → `create_run` → `get_run_metrics`.
+- "Design and run an optimization program for…" → `list_components` → `validate_program` → `create_run` → `get_run_metrics`.
 
-Prompts surface as slash commands (e.g. `/mcp__proto-bio__design_program`) and resources as `@`-mentions (e.g. `@proto-bio:proto-tools://tools/<key>`). See the [MCP user guide](docs/mcp.md) for the full walkthrough.
+Prompts surface as slash commands (e.g. `/mcp__proto-bio__find_tool`) and resources as `@`-mentions (e.g. `@proto-bio:proto-tools://tools/<key>`). See the [MCP user guide](docs/mcp.md) for the full walkthrough.
 
 ## Development
 
