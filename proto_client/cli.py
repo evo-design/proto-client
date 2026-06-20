@@ -78,7 +78,13 @@ def cmd_tools_example(client: ProtoClient, args: argparse.Namespace) -> int:
 def cmd_runs_submit(client: ProtoClient, args: argparse.Namespace) -> int:
     """Submit an optimization run; with ``--wait`` poll to completion and optionally export."""
     if args.export and not args.wait:
-        print("error: --export requires --wait", file=sys.stderr)
+        # --wait is mutually exclusive with --no-execute, so don't point a --no-execute caller at --wait.
+        msg = (
+            "error: --export cannot be used with --no-execute (a run must execute to produce exportable output)"
+            if args.no_execute
+            else "error: --export requires --wait"
+        )
+        print(msg, file=sys.stderr)
         return 2
     program = _read_json(args.program)
     if args.wait:

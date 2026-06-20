@@ -1,6 +1,7 @@
 """Tests for MCP tool implementations and registration."""
 
 import gzip
+import json
 import sys
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -574,6 +575,29 @@ async def test_handle_proto_errors_maps_each_class_to_tool_error(error, match):
         raise error
 
     with pytest.raises(ToolError, match=match):
+        await boom()
+
+
+async def test_handle_proto_errors_wraps_pydantic_validation_error():
+    """A malformed 2xx body (backend drift) surfaces as ToolError, not raw pydantic.ValidationError."""
+
+    @_handle_proto_errors
+    async def boom():
+        # Simulates Model.model_validate(response.json()) on a drifted/missing-field body.
+        MeResponse.model_validate({"unexpected": "shape"})
+
+    with pytest.raises(ToolError, match="Malformed response from server"):
+        await boom()
+
+
+async def test_handle_proto_errors_wraps_json_decode_error():
+    """A non-JSON 200 body raises json.JSONDecodeError (a ValueError) → ToolError."""
+
+    @_handle_proto_errors
+    async def boom():
+        json.loads("not json")  # json.JSONDecodeError subclasses ValueError
+
+    with pytest.raises(ToolError, match="Malformed response from server"):
         await boom()
 
 

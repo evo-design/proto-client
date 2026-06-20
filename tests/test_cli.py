@@ -151,6 +151,18 @@ def test_runs_submit_export_requires_wait(tmp_path, capsys):
     assert "requires --wait" in capsys.readouterr().err
 
 
+def test_runs_submit_export_rejects_no_execute(tmp_path, capsys):
+    prog = tmp_path / "program.json"
+    prog.write_text("{}")
+    args = build_parser().parse_args(["runs", "submit", str(prog), "--no-execute", "--export", str(tmp_path / "o.zip")])
+
+    assert cmd_runs_submit(MagicMock(), args) == 2
+    # --wait is mutually exclusive with --no-execute, so the message must not point there.
+    err = capsys.readouterr().err
+    assert "cannot be used with --no-execute" in err
+    assert "requires --wait" not in err
+
+
 def test_dispatch_maps_api_error_to_exit_1(tmp_path, capsys, monkeypatch):
     infile = tmp_path / "in.json"
     infile.write_text("{}")

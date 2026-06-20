@@ -23,7 +23,7 @@ import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import FastMCPError, ToolError
 from fastmcp.server.dependencies import get_http_request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from proto_client._async.assets import AsyncAssetsNamespace
 from proto_client._async.client import AsyncProtoClient
@@ -147,6 +147,9 @@ def _handle_proto_errors(fn: _F | None = None, *, error_cls: type[FastMCPError] 
                 raise error_cls(f"API error [{e.status_code}]: {e.message}") from e
             except (httpx.NetworkError, httpx.TimeoutException) as e:
                 raise error_cls(f"Connection error: {e}") from e
+            except (ValidationError, ValueError) as e:
+                # Last clause: catches drifted/non-JSON 2xx parse failures the typed clauses above don't.
+                raise error_cls(f"Malformed response from server: {e}") from e
 
         return wrapper
 
