@@ -4,7 +4,7 @@
 
 [![Checks](https://github.com/evo-design/proto-client/actions/workflows/checks.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/checks.yml)
 [![Unit Tests](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml)
-`proto-client` is the official Python SDK for the **Proto Bio APIs**. Run any of **60+ bioinformatics tools**, submit **optimization runs**, stream logs, and download results, all from a few lines of typed Python.
+`proto-client` is the official Python SDK for the **Proto Bio APIs**. Run any of **80+ bioinformatics tools**, submit **optimization runs**, stream logs, and download results, all from a few lines of typed Python.
 
 The SDK ships a synchronous `ProtoClient` and an asynchronous `AsyncProtoClient` with the same surface, fully type-checked responses, and transport-level retries. It also bundles an **MCP server**, so Claude, Cursor, VS Code Copilot, and any other MCP-compatible agent can drive the same APIs through natural language.
 
