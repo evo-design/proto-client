@@ -54,8 +54,7 @@ class AsyncToolsNamespace:
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """Issue a GET/POST, log it, and raise a typed error on any non-2xx response."""
         logger.debug("%s %s", method, path)
-        # Dispatch by verb (only GET/POST are used) to keep the method-specific
-        # httpx call surface the namespace tests assert on.
+        # Dispatch by verb (only GET/POST) so tests can assert the method-specific httpx call surface.
         verb: Callable[..., Awaitable[httpx.Response]] = self._http.get if method == "GET" else self._http.post
         resp = await verb(path, **kwargs)
         logger.debug("%s %s -> %d", method, path, resp.status_code)

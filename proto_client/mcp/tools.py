@@ -352,8 +352,7 @@ async def fetch_asset_impl(client: AsyncProtoClient, ref: dict[str, Any], max_by
             "mime_type": ref.get("mime_type"),
             "size_bytes": size,
         }
-    # Enforce max_bytes on the actual decoded payload — covers refs with no `size_bytes`
-    # metadata and +gzip refs whose stored size understates the decoded size.
+    # Enforce on the decoded payload: refs may omit size_bytes, and +gzip understates the stored size.
     decoded_len = _decoded_byte_len(content)
     if decoded_len > max_bytes:
         return {
