@@ -178,7 +178,8 @@ def _extract_body(response: httpx.Response) -> Any:
 
 
 def _extract_message(body: Any, status_code: int) -> str:
-    # detail is either a string message or a list of {loc, msg, type} validation entries.
+    # detail is a string message, a list of {loc, msg, type} validation entries, or a
+    # structured dict like {"code": ..., "message": ...} (e.g. 409 tool_not_hosted).
     if isinstance(body, dict):
         detail = body.get("detail")
         if isinstance(detail, str) and detail:
@@ -190,6 +191,10 @@ def _extract_message(body: Any, status_code: int) -> str:
                 if isinstance(msg, str):
                     return msg
             return "Validation error"
+        if isinstance(detail, dict):
+            msg = detail.get("message")
+            if isinstance(msg, str) and msg:
+                return msg
         message = body.get("message")
         if isinstance(message, str) and message:
             return message

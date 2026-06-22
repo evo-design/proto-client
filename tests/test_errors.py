@@ -103,6 +103,14 @@ def test_string_detail_for_http_exception() -> None:
     assert err.message == "Unknown tool: 'foo'"
 
 
+def test_dict_detail_message_extracted() -> None:
+    # e.g. 409 tool_not_hosted: detail is a structured dict, not a string.
+    body = {"detail": {"code": "tool_not_hosted", "message": "Tool is local-only due to licensing.", "source_url": "x"}}
+    err = from_response(_response(409, body))
+    assert isinstance(err, ProtoConflictError)
+    assert err.message == "Tool is local-only due to licensing."
+
+
 def test_non_json_body_uses_default_message() -> None:
     resp = httpx.Response(
         status_code=500,
