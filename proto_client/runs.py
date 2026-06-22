@@ -36,6 +36,7 @@ from proto_client.models import (
     RunStatus,
     RunTimepointResponse,
     StageMetrics,
+    StartStageResponse,
     StreamChannel,
     ValidationResponse,
 )
@@ -183,13 +184,14 @@ class RunsNamespace:
         """
         return self._request("POST", f"/api/v1/runs/{run_id}/cancel", model=CancelRunResponse)
 
-    def run_stage(self, run_id: str, stage_index: int) -> RunResponse:
+    def run_stage(self, run_id: str, stage_index: int) -> StartStageResponse:
         """POST /api/v1/runs/{run_id}/stages/{stage_index}/start — run a single stage.
 
         Used for incremental execution (after ``create(..., execute=False)``)
-        or to re-run a failed stage.
+        or to re-run a failed stage. The stage is dispatched asynchronously;
+        poll :meth:`get` for progress and results.
         """
-        return self._request("POST", f"/api/v1/runs/{run_id}/stages/{stage_index}/start", model=RunResponse)
+        return self._request("POST", f"/api/v1/runs/{run_id}/stages/{stage_index}/start", model=StartStageResponse)
 
     # ------------------------------------------------------------ validation
 
