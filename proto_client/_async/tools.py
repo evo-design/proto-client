@@ -38,7 +38,7 @@ _list = list
 
 
 class AsyncToolsNamespace:
-    """Access bioinformatics tools via the the tools API.
+    """Access bioinformatics tools via the tools API.
 
     Usage::
 

@@ -89,15 +89,6 @@ proto-client runs export run_123 out.zip
 
 Downloads the results zip and prints its on-disk path. The destination path is optional and defaults to the server-provided filename in the current directory.
 
-### `mcp` — launch the MCP server
-
-```bash
-proto-client mcp                                  # stdio (default)
-proto-client mcp --transport http --port 9300     # HTTP
-```
-
-Launches the MCP server for AI agents. Requires the `[mcp]` extra (`pip install proto-client[mcp]`). See the [MCP user guide](mcp.md) for connecting agents.
-
 ## Output and exit behavior
 
 - Results are emitted as JSON — to stdout, or to the path given by `-o/--output` (that path is echoed to stderr). Binary outputs download only when you pass `--assets DIR`.

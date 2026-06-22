@@ -1,8 +1,7 @@
 """FastMCP server exposing Proto Bio APIs to MCP-compatible AI clients.
 
 Wraps :class:`~proto_client.AsyncProtoClient` and exposes its methods as MCP
-tools, prompts, and resources. Both stdio and HTTP transports are supported
-via the CLI in ``__main__.py``.
+tools, prompts, and resources.
 """
 
 from collections.abc import AsyncIterator

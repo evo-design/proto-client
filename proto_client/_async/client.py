@@ -50,10 +50,10 @@ class AsyncProtoClient:
             app_user_id: End-user identifier sent as ``x-app-user-id`` on every request.
                 Scopes server-side ownership and asset access checks to this identity.
                 Omit when the caller is acting at the platform/admin level.
-            tools_base_url: Override the the tools API base URL (for testing or staging).
+            tools_base_url: Override the tools API base URL (for testing).
                 Falls back to ``PROTO_TOOLS_BASE_URL`` then the packaged default.
                 A non-default URL must use https unless it is a loopback host.
-            runs_base_url: Override the the runs API base URL (for testing or staging).
+            runs_base_url: Override the runs API base URL (for testing).
                 Falls back to ``PROTO_RUNS_BASE_URL`` then the packaged default.
                 A non-default URL must use https unless it is a loopback host.
         """

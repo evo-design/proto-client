@@ -37,7 +37,7 @@ _list = list
 
 
 class ToolsNamespace:
-    """Access bioinformatics tools via the the tools API.
+    """Access bioinformatics tools via the tools API.
 
     Usage::
 

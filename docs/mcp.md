@@ -77,43 +77,6 @@ bearer_token_env_var = "PROTO_API_KEY"
 
 In a Claude Code session, run `/mcp`. You should see **proto-bio · Connected** with a tool count greater than zero. If it shows **0 tools** or **authentication failed**, your Bearer token is missing or wrong.
 
-
-
-
-
-```bash
-pip install proto-client[mcp]
-```
-
-Add it to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
-
-```json
-{
-  "mcpServers": {
-    "proto-bio": {
-      "command": "python",
-      "args": ["-m", "proto_client.mcp"],
-      "env": { "PROTO_API_KEY": "your-api-key" }
-    }
-  }
-}
-```
-
-A `proto-client-mcp` console script is installed alongside:
-
-```bash
-proto-client-mcp                                        # stdio (default)
-proto-client-mcp --transport http --port 9300           # HTTP
-```
-
-
-
-```bash
-
-```
-
-
-
 ## 2. First call — confirm your key
 
 Describe what you want in natural language; the agent picks the right tool. The cleanest first call confirms your key end to end:

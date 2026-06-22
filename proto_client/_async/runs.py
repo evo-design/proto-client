@@ -92,7 +92,7 @@ _TERMINAL_STATUSES = frozenset({RunStatus.completed, RunStatus.failed, RunStatus
 
 
 class AsyncRunsNamespace:
-    """Access the runs API runs, validation, timepoints, and registries.
+    """Access runs, validation, timepoints, and registries.
 
     Usage::
 

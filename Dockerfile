@@ -14,8 +14,8 @@ USER app
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
-# Leave PROTO_API_KEY unset so each request
-# must carry its own `Authorization: Bearer <PROTO_API_KEY>` (see CLAUDE.md).
+# Leave PROTO_API_KEY unset so each request must carry its own
+# `Authorization: Bearer <PROTO_API_KEY>`.
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ['PORT'] + '/health')" || exit 1

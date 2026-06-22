@@ -52,6 +52,9 @@ dev = [
 proto-client = "proto_client.cli:main"
 proto-client-mcp = "proto_client.mcp.__main__:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["proto_client"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]

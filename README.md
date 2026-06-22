@@ -16,12 +16,6 @@ All you need is Python 3.10+ and pip:
 pip install proto-client
 ```
 
-For the MCP server, install the optional extra:
-
-```bash
-pip install proto-client[mcp]
-```
-
 ## Quickstart
 
 Set `PROTO_API_KEY` in your environment (or pass `api_key=` explicitly), then:
@@ -31,10 +25,10 @@ from proto_client import ProtoClient
 
 client = ProtoClient()
 
-# Run a bioinformatics tool and poll to completion (the tools API)
+# Run a bioinformatics tool and poll to completion (tools API)
 job = client.tools.run("esmfold-prediction", {"sequences": ["MKTL"]})
 
-# Submit an optimization run and poll to completion (the runs API)
+# Submit an optimization run and poll to completion (runs API)
 run = client.runs.run(program_data={...})
 ```
 
@@ -52,7 +46,7 @@ async with AsyncProtoClient() as client:
 
 ## Working with output assets
 
-Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON; the `client.assets` namespace downloads, decodes, or streams them to disk on demand. See [**Working with output assets**](docs/mcp.md#working-with-output-assets) for the methods, MIME decoding, and examples.
+Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON; the `client.assets` namespace downloads, decodes, or streams them to disk on demand. See [**Working with output assets**](https://github.com/evo-design/proto-client/blob/main/docs/mcp.md#working-with-output-assets) for the methods, MIME decoding, and examples.
 
 ## Exporting a run's results
 
@@ -88,10 +82,10 @@ proto-client tools run esmfold-prediction --inputs in.json --assets ./out
 proto-client runs submit program.json --wait --export out.zip
 ```
 
-See the [**CLI guide**](docs/cli.md) for the full command reference.
+See the [**CLI guide**](https://github.com/evo-design/proto-client/blob/main/docs/cli.md) for the full command reference.
 
 ## Using with AI agents (MCP)
 
-`proto-client` includes an [MCP](https://modelcontextprotocol.io/) server so Claude, Claude Desktop, Cursor, VS Code Copilot, Codex, Gemini, and any other MCP-compatible agent can call the Proto Bio APIs through natural language. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio.
+`proto-client` includes an [MCP](https://modelcontextprotocol.io/) server so Claude, Claude Desktop, Cursor, VS Code Copilot, Codex, Gemini, and any other MCP-compatible agent can call the Proto Bio APIs through natural language. Connect to the **hosted** endpoint (nothing to install).
 
-See the [**MCP user guide**](docs/mcp.md) for per-agent connection snippets, the tool/prompt/resource surface, and a guided walkthrough.
+See the [**MCP user guide**](https://github.com/evo-design/proto-client/blob/main/docs/mcp.md) for per-agent connection snippets, the tool/prompt/resource surface, and a guided walkthrough.
