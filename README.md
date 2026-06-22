@@ -1,17 +1,12 @@
-# 🧬 Proto Client 🐍
+# Proto Client
 
-![Proto Client](https://proto-bio.github.io/proto-assets/default/hero.png)
+![Proto Client](https://proto-bio.github.io/proto-assets/covers/open-wings-code/carousel.png)
 
 [![Checks](https://github.com/evo-design/proto-client/actions/workflows/checks.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/checks.yml)
 [![Unit Tests](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml)
-`proto-client` is the official Python SDK for the **Proto Bio APIs**. Run any of **80+ bioinformatics tools**, submit **optimization runs**, stream logs, and download results, all from a few lines of typed Python.
+`proto-client` is the official Python SDK for the Proto project. Run any of **80+ bioinformatics tools** from [proto-tools](https://github.com/evo-design/proto-tools), submit **optimization runs** built with [proto-language](https://github.com/evo-design/proto-language), stream logs, and download results, all from a few lines of typed Python.
 
-The SDK ships a synchronous `ProtoClient` and an asynchronous `AsyncProtoClient` with the same surface, fully type-checked responses, and transport-level retries. It also bundles an **MCP server**, so Claude, Cursor, VS Code Copilot, and any other MCP-compatible agent can drive the same APIs through natural language.
-
-## Related Repositories
-
-- [`proto-language`](https://github.com/evo-design/proto-language) – High-level programming language for generative biology
-- [`proto-tools`](https://github.com/evo-design/proto-tools) – Bioinformatics tool wrappers with isolated environments
+The SDK provides a synchronous `ProtoClient` and an asynchronous `AsyncProtoClient` with the same surface, fully type-checked responses, and transport-level retries. It also includes an **MCP server**, so Claude, Cursor, VS Code Copilot, and any other MCP-compatible agent can call the same APIs through natural language.
 
 ## Installation
 
@@ -57,31 +52,7 @@ async with AsyncProtoClient() as client:
 
 ## Working with output assets
 
-Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON. The `client.assets` namespace fetches their bytes on demand:
-
-| Method | Return value | MIME handling | Use when |
-|---|---|---|---|
-| `client.assets.download(ref, path)` | bytes streamed to a file | none; preserves exact stored bytes | you want a file, or the asset may be large |
-| `client.assets.get(ref)` | raw `bytes` in memory | none; preserves exact stored bytes | you explicitly want raw bytes |
-| `client.assets.decode(ref)` | Python object, text, or bytes | decodes by `mime_type` | you want a convenient in-Python value |
-
-`decode()` maps `application/json+gzip` to gunzipped JSON, `application/json` / `*+json` to JSON, and `chemical/*` / `text/*` to UTF-8 text; unknown MIME types stay raw bytes. It loads the full asset into memory, so prefer `download()` for large outputs.
-
-```python
-client = ProtoClient()
-
-job = client.tools.run("evo2-score", inputs, config)
-logits_ref = job.result["scores"][0]["logits"]
-client.assets.download(logits_ref, "logits.json.gz")
-
-run = client.runs.get("run_123")
-# Per-constraint data lives on full timepoint rows, not the slim run summary.
-tp = client.runs.get_timepoint(run.id, stage=0, timepoint=0)
-pdb_output = tp.results[0].constructs[0].segments[0].constraints["fold"].data["pdb_output"]
-pdb_text = client.assets.decode(pdb_output)
-```
-
-The client fetches only through authenticated Proto API origins, and strips authentication and end-user identity headers before following any redirect away from those origins. Not every ref is fetchable: upload-allocation refs, reference-database refs without an API-readable URL, and refs missing a `url` are rejected. Async clients expose the same namespace with `await`.
+Large cloud outputs (structures, logits, PAE matrices, embeddings) come back as `AssetRef` objects rather than inline JSON; the `client.assets` namespace downloads, decodes, or streams them to disk on demand. See [**Working with output assets**](docs/mcp.md#working-with-output-assets) for the methods, MIME decoding, and examples.
 
 ## Exporting a run's results
 
@@ -109,143 +80,18 @@ For a single asset rather than the whole bundle, use `client.assets.download(ref
 
 ## Command line
 
-A minimal `proto-client` CLI ships for submitting jobs from a shell or CI. Set `PROTO_API_KEY`, then:
+A minimal `proto-client` CLI submits tools and optimization runs from a shell or CI, then writes the result JSON and downloads any output assets:
 
 ```bash
-# Scaffold a tool's inputs, then submit, wait, write the result, and download assets
-proto-client tools example esmfold-prediction > in.json
-proto-client tools run esmfold-prediction --inputs in.json -o result.json --assets ./out
-
-# Submit an optimization run and export its results
+proto-client me                                                    # workspace and credits
+proto-client tools run esmfold-prediction --inputs in.json --assets ./out
 proto-client runs submit program.json --wait --export out.zip
-
-# Check the calling key's workspace and credits
-proto-client me
 ```
 
-Results are emitted as JSON (stdout or `-o FILE`); binary outputs download to `--assets DIR`. `proto-client mcp` launches the MCP server (below). Run `proto-client --help` for the full command tree.
+See the [**CLI guide**](docs/cli.md) for the full command reference.
 
 ## Using with AI agents (MCP)
 
-Proto Bio ships an [MCP](https://modelcontextprotocol.io/) server that works with Claude, OpenAI, VS Code Copilot, Cursor, ChatGPT, and any MCP-compatible client. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio. For a step-by-step walkthrough of connecting and interacting, see the [**MCP user guide**](docs/mcp.md).
+`proto-client` includes an [MCP](https://modelcontextprotocol.io/) server so Claude, Claude Desktop, Cursor, VS Code Copilot, Codex, Gemini, and any other MCP-compatible agent can call the Proto Bio APIs through natural language. Connect to the **hosted** endpoint (nothing to install) or run it **locally** over stdio.
 
-### Hosted (HTTP)
-
-Point your agent at `https://mcp.evodesign.org/mcp` and authenticate with your Proto API key as a Bearer token; no install required.
-
-**Claude Code:**
-
-```bash
-claude mcp add --transport http proto-bio https://mcp.evodesign.org/mcp \
-  --header "Authorization: Bearer $PROTO_API_KEY"
-```
-
-**`.mcp.json` / Claude Desktop:**
-
-```json
-{
-  "mcpServers": {
-    "proto-bio": {
-      "type": "http",
-      "url": "https://mcp.evodesign.org/mcp",
-      "headers": { "Authorization": "Bearer ${PROTO_API_KEY}" }
-    }
-  }
-}
-```
-
-**Cursor** (`.cursor/mcp.json`) — same shape, but env interpolation uses `${env:PROTO_API_KEY}`.
-
-**VS Code** (`.vscode/mcp.json`) — top-level key is `servers`, and secrets come from `inputs`:
-
-```json
-{
-  "inputs": [{ "type": "promptString", "id": "proto-api-key", "description": "Proto API key", "password": true }],
-  "servers": {
-    "proto-bio": {
-      "type": "http",
-      "url": "https://mcp.evodesign.org/mcp",
-      "headers": { "Authorization": "Bearer ${input:proto-api-key}" }
-    }
-  }
-}
-```
-
-**Codex** (`~/.codex/config.toml`):
-
-```toml
-[mcp_servers.proto-bio]
-url = "https://mcp.evodesign.org/mcp"
-bearer_token_env_var = "PROTO_API_KEY"
-```
-
-**Gemini CLI** (`~/.gemini/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "proto-bio": {
-      "httpUrl": "https://mcp.evodesign.org/mcp",
-      "headers": { "Authorization": "Bearer $PROTO_API_KEY" }
-    }
-  }
-}
-```
-
-### Local (stdio)
-
-```bash
-pip install proto-client[mcp]
-```
-
-Add it to your MCP client config (`.mcp.json`, `claude_desktop_config.json`, etc.):
-
-```json
-{
-  "mcpServers": {
-    "proto-bio": {
-      "command": "python",
-      "args": ["-m", "proto_client.mcp"],
-      "env": { "PROTO_API_KEY": "your-api-key" }
-    }
-  }
-}
-```
-
-A `proto-client-mcp` CLI script is installed alongside:
-
-```bash
-proto-client-mcp                                        # stdio (default)
-proto-client-mcp --transport http --port 9300           # HTTP
-```
-
-
-
-```bash
-
-```
-
-
-
-The server exposes `whoami` (workspace, scopes, and credits for the calling key), tools for bioinformatics tool discovery and execution (`list_tools`, `search_tools`, `get_tool_schema`, `get_tool_example`, `run_tool`, and `fetch_asset` for result assets), and optimization-run management (`list_components`, `validate_program`, `create_run`, `get_run_status`, `run_stage`, `cancel_run`, plus result retrieval via `get_run_metrics` / `get_run_timepoints` / `get_run_timepoint`), alongside MCP prompts and resources. See the `instructions` block in `proto_client/mcp/server.py` for the authoritative, always-current surface.
-
-### Interacting with the server
-
-Once connected, talk to your agent in natural language — it calls the right tools. A quick first loop:
-
-- Run `/mcp` to confirm **proto-bio · Connected** with a non-zero tool count.
-- "Check my Proto workspace and credits" → `whoami`.
-- "Find a tool to predict protein structure and run it on this sequence…" → `search_tools` → `get_tool_schema` → `run_tool` → `fetch_asset`.
-- "Design and run an optimization program for…" → `list_components` → `validate_program` → `create_run` → `get_run_metrics`.
-
-Prompts surface as slash commands (e.g. `/mcp__proto-bio__find_tool`) and resources as `@`-mentions (e.g. `@proto-bio:proto-tools://tools/<key>`). See the [MCP user guide](docs/mcp.md) for the full walkthrough.
-
-## Development
-
-The async modules in `proto_client/_async/` are the **source of truth**. Their sync mirrors (`proto_client/runs.py` and `proto_client/_ndjson.py`) are **generated** from them via [unasync](https://github.com/python-trio/unasync), a token-level transform configured in `scripts/gen_sync.py`. The generated files are committed, and a CI check verifies they stay in sync. To regenerate after editing an async source:
-
-```bash
-python scripts/gen_sync.py
-```
-
-Do not edit the generated sync files directly; your changes will be overwritten on the next regen. See [`CLAUDE.md`](CLAUDE.md) for the full architecture, conventions, and testing notes.
+See the [**MCP user guide**](docs/mcp.md) for per-agent connection snippets, the tool/prompt/resource surface, and a guided walkthrough.
