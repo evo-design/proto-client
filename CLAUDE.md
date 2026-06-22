@@ -76,7 +76,7 @@ The server lifespan creates/closes one `AsyncProtoClient` that reads config from
 - The hosted server (`mcp.evodesign.org`) authenticates each request with its own Bearer token.
 
 
-**Deployment**: the MCP server is deployed separately on private infrastructure.
+**Deployment**: the MCP server is deployed separately; the hosted service runs at `mcp.evodesign.org`.
 
 ### CLI
 
