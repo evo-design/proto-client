@@ -52,6 +52,7 @@ from proto_client.models import (
     RunResponse,
     RunTimepointResponse,
     StageMetrics,
+    StartStageResponse,
     ToolInfo,
     ToolSchema,
     ValidationResponse,
@@ -399,7 +400,7 @@ async def cancel_run_impl(client: AsyncProtoClient, run_id: str) -> CancelRunRes
     return await client.runs.cancel(run_id)
 
 
-async def run_stage_impl(client: AsyncProtoClient, run_id: str, stage_index: int) -> RunResponse:
+async def run_stage_impl(client: AsyncProtoClient, run_id: str, stage_index: int) -> StartStageResponse:
     """Start a specific stage of a multi-stage optimization run."""
     return await client.runs.run_stage(run_id, stage_index)
 
@@ -532,7 +533,7 @@ async def cancel_run(run_id: str, ctx: Context) -> CancelRunResponse:
 
 
 @_handle_proto_errors
-async def run_stage(run_id: str, stage_index: int, ctx: Context) -> RunResponse:
+async def run_stage(run_id: str, stage_index: int, ctx: Context) -> StartStageResponse:
     """Start a specific stage of a multi-stage run."""
     async with _get_client(ctx) as client:
         return await run_stage_impl(client, run_id, stage_index)

@@ -26,6 +26,7 @@ from proto_client.models import (
     RunStatus,
     RunTimepointResponse,
     StageMetrics,
+    StartStageResponse,
     ValidationResponse,
 )
 from proto_client.runs import RunsNamespace
@@ -324,15 +325,29 @@ def test_sync_cancel_not_found():
 
 
 def test_sync_run_stage_success():
+    # The /start endpoint returns a StartStageResponse ack (the stage runs
+    # asynchronously) — not a full RunResponse.
     def handler(request):
         if request.method == "POST" and request.url.path == "/api/v1/runs/r1/stages/2/start":
-            return httpx.Response(200, json=run_response_json("r1", "running", current_stage=2))
+            return httpx.Response(
+                200,
+                json={
+                    "message": "Stage 2 started",
+                    "run_id": "r1",
+                    "stage_index": 2,
+                    "total_stages": 3,
+                    "task_id": "task-abc",
+                    "is_rerun": False,
+                },
+            )
         raise AssertionError(f"unexpected {request.method} {request.url.path}")
 
     ns = make_sync_ns(handler)
     result = ns.run_stage("r1", 2)
-    assert isinstance(result, RunResponse)
-    assert result.current_stage == 2
+    assert isinstance(result, StartStageResponse)
+    assert result.stage_index == 2
+    assert result.task_id == "task-abc"
+    assert result.is_rerun is False
 
 
 def test_sync_run_stage_error():

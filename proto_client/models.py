@@ -54,6 +54,7 @@ __all__ = [
     "SegmentResult",
     "StageMetrics",
     "StageResult",
+    "StartStageResponse",
     "ValidationResponse",
     # Logs (shared by runs + tools jobs)
     "Level",
@@ -386,6 +387,23 @@ class CreateRunResponse(BaseModel):
     run_id: str
     status: RunStatus
     message: str
+
+
+class StartStageResponse(BaseModel):
+    """Ack from ``POST /runs/{run_id}/stages/{stage_index}/start``.
+
+    The stage is dispatched asynchronously; poll ``GET /runs/{run_id}`` for
+    progress and results.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+    run_id: str
+    stage_index: int
+    total_stages: int
+    task_id: str = Field(description="Identifier of the dispatched execution task.")
+    is_rerun: bool = Field(description="True when re-running an earlier or already-terminal stage.")
 
 
 class RunResponse(BaseModel):
