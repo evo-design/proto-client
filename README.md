@@ -16,6 +16,12 @@ All you need is Python 3.10+ and pip:
 pip install proto-client
 ```
 
+The MCP server is an optional extra:
+
+```bash
+pip install proto-client[mcp]
+```
+
 ## Quickstart
 
 Set `PROTO_API_KEY` in your environment (or pass `api_key=` explicitly), then:
