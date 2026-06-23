@@ -2,8 +2,11 @@
 
 ![Proto Client](https://proto-bio.github.io/proto-assets/covers/open-wings-code/carousel.png)
 
-[![Checks](https://github.com/evo-design/proto-client/actions/workflows/checks.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/checks.yml)
+[![Checks](https://github.com/evo-design/proto-client/actions/workflows/checks.yml/badge.svg?event=pull_request)](https://github.com/evo-design/proto-client/actions/workflows/checks.yml)
 [![Unit Tests](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/evo-design/proto-client/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-proto.evodesign.org-blue)](https://proto.evodesign.org/docs/mcp/introduction)
+
 `proto-client` is the official Python SDK for the Proto project. Run any of **80+ bioinformatics tools** from [proto-tools](https://github.com/evo-design/proto-tools), submit **optimization runs** built with [proto-language](https://github.com/evo-design/proto-language), stream logs, and download results, all from a few lines of typed Python.
 
 The SDK provides a synchronous `ProtoClient` and an asynchronous `AsyncProtoClient` with the same surface, fully type-checked responses, and transport-level retries. It also includes an **MCP server**, so Claude, Cursor, VS Code Copilot, and any other MCP-compatible agent can call the same APIs through natural language.
