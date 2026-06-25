@@ -6,6 +6,7 @@
 [![Unit Tests](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/evo-design/proto-client/actions/workflows/unit-tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/evo-design/proto-client/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-proto.evodesign.org-blue)](https://proto.evodesign.org/docs/mcp/introduction)
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-2026.06.22.733870-b31b1b.svg)](https://www.biorxiv.org/content/10.64898/2026.06.22.733870)
 
 `proto-client` is the official Python SDK for the Proto project. Run any of **80+ bioinformatics tools** from [proto-tools](https://github.com/evo-design/proto-tools), submit **optimization runs** built with [proto-language](https://github.com/evo-design/proto-language), stream logs, and download results, all from a few lines of typed Python.
 
@@ -98,3 +99,22 @@ See the [**CLI guide**](https://github.com/evo-design/proto-client/blob/main/doc
 `proto-client` includes an [MCP](https://modelcontextprotocol.io/) server so Claude, Claude Desktop, Cursor, VS Code Copilot, Codex, Gemini, and any other MCP-compatible agent can call the Proto Bio APIs through natural language. Connect to the **hosted** endpoint (nothing to install).
 
 See the [**MCP user guide**](https://github.com/evo-design/proto-client/blob/main/docs/mcp.md) for per-agent connection snippets, the tool/prompt/resource surface, and a guided walkthrough.
+
+## Citation
+
+If you use Proto in your research, please cite our preprint:
+
+> Merchant AT, Guo D, Viggiano B, Brennan-Almaraz LE, Hur E, Mai T, Yin P, King SH, Ashley E, Hie BL. **A high-level programming language for generative biology with Proto.** *bioRxiv* (2026). doi: [10.64898/2026.06.22.733870](https://doi.org/10.64898/2026.06.22.733870)
+
+```bibtex
+@article{Merchant2026.06.22.733870,
+  author = {Merchant, Aditi T and Guo, Daniel and Viggiano, Ben and Brennan-Almaraz, Lucas Emmanuel and Hur, Evelyn and Mai, Tina and Yin, Peter and King, Samuel H and Ashley, Euan and Hie, Brian L},
+  title = {A high-level programming language for generative biology with Proto},
+  elocation-id = {2026.06.22.733870},
+  year = {2026},
+  doi = {10.64898/2026.06.22.733870},
+  publisher = {Cold Spring Harbor Laboratory},
+  URL = {https://www.biorxiv.org/content/10.64898/2026.06.22.733870},
+  journal = {bioRxiv}
+}
+```
